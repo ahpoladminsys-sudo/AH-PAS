@@ -1391,7 +1391,8 @@
         source: true, service: true, code: true, operationId: true, correlationId: true,
         fileId: true, fileName: true, records: true, state: true, attempt: true, reason: true,
         mode: true, provider: true, authorization: true, repository: true, status: true,
-        previousStatus: true, currentStatus: true, portable: true, hasSession: true
+        previousStatus: true, currentStatus: true, portable: true, hasSession: true,
+        modeLabel: true
     });
     function mergeSystemLogEvents(remoteEvents, localEvents) {
         var merged = [];
@@ -1753,23 +1754,39 @@
             metadata: systemEventSafeMetadata({ metadata: metadata })
         };
     }
+
+    function googleConnectorRecoveryState(states, affected) {
+        var sheets = states.sheets || {};
+        var drive = states.drive || {};
+        function connected(state) {
+            return /connected/i.test(String(state.status || '')) && !/reauthorization required|expired|unavailable|failed|permission review|required/i.test(String(state.status || '') + ' ' + String(state.detail || ''));
+        }
+        var sheetsRecovered = connected(sheets);
+        var driveRecovered = connected(drive);
+        return {
+            sheetsRecovered: sheetsRecovered,
+            driveRecovered: driveRecovered,
+            complete: (!affected.sheets || sheetsRecovered) && (!affected.drive || driveRecovered)
+        };
+    }
+    window.TinubuGoogleRecovery = { evaluate: googleConnectorRecoveryState };
     function openGoogleReauthorizationGuide() {
         var existing = document.getElementById('google-reauthorization-guide');
         if (existing) {
             existing.remove();
             return;
         }
-        if (typeof systemEvent === 'function') systemEvent('GOOGLE_REAUTH_GUIDE_OPENED', 'Pending review', 'Opened the guided Google Sheets authorization recovery screen.', { source: 'Cloud connection controls' });
+        if (typeof systemEvent === 'function') systemEvent('GOOGLE_REAUTH_GUIDE_OPENED', 'Pending review', 'Opened the managed Google connector authorization recovery screen.', { source: 'Cloud connection controls' });
         var modal = document.createElement('div');
         modal.id = 'google-reauthorization-guide';
         modal.className = 'modal-overlay';
         modal.style.display = 'flex';
         modal.innerHTML = '<div class="modal-content system-reauth-modal" role="dialog" aria-modal="true" aria-labelledby="google-reauth-title">' +
-            '<div class="modal-header"><div><h3 id="google-reauth-title"><i class="fa-solid fa-shield-halved"></i> Restore Google Sheets access</h3><span class="system-reauth-header-status">Authorization required</span></div><button class="modal-close" type="button" aria-label="Close recovery guide">&times;</button></div>' +
-            '<div class="modal-body"><div class="system-reauth-alert"><i class="fa-solid fa-triangle-exclamation"></i><div><strong>Google Sheets authorization has expired.</strong><p>Signing into the application and reauthorizing the Google Sheets connection are separate steps. Follow the checklist below; workbook writes stay paused until access is verified again.</p></div></div>' +
+            '<div class="modal-header"><div><h3 id="google-reauth-title"><i class="fa-solid fa-shield-halved"></i> Restore managed Google access</h3><span class="system-reauth-header-status">Connector authorization required</span></div><button class="modal-close" type="button" aria-label="Close recovery guide">&times;</button></div>' +
+            '<div class="modal-body"><div class="system-reauth-alert"><i class="fa-solid fa-triangle-exclamation"></i><div><strong>The managed connector explicitly reported invalid or disconnected authorization.</strong><p>Application sign-in is checked separately and is skipped when already connected. Reauthorize only the affected Google connector; pending changes and read-only safeguards remain in place until live reads succeed.</p></div></div>' +
             '<ol class="system-reauth-steps"><li data-reauth-step="1"><div class="system-reauth-step-number">1</div><div class="system-reauth-step-copy"><strong>Sign in to the application</strong><span>Open the secure sign-in window and complete your application sign-in.</span><small data-reauth-step-status="1">Waiting for sign-in.</small><button class="btn btn-primary btn-sm" type="button" data-reauth-signin><i class="fa-solid fa-right-to-bracket"></i> Sign in / reconnect</button></div></li>' +
-            '<li data-reauth-step="2"><div class="system-reauth-step-number">2</div><div class="system-reauth-step-copy"><strong>Reauthorize Google Sheets</strong><span>In the workspace connected-services or Integrations panel, choose Google Sheets and select Reauthorize. Approve the requested access, then return here.</span><small data-reauth-step-status="2">Complete step 1 first.</small><button class="btn btn-secondary btn-sm" type="button" data-reauth-confirm disabled><i class="fa-solid fa-check"></i> I reauthorized Google Sheets</button></div></li>' +
-            '<li data-reauth-step="3"><div class="system-reauth-step-number">3</div><div class="system-reauth-step-copy"><strong>Refresh protected status</strong><span>Run a fresh protected check. A connected or read-only Sheets status means authorization is back; verified write access is reported separately.</span><small data-reauth-step-status="3">Complete step 2 first.</small><button class="btn btn-secondary btn-sm" type="button" data-reauth-refresh disabled><i class="fa-solid fa-rotate"></i> Refresh protected status</button></div></li></ol>' +
+            '<li data-reauth-step="2"><div class="system-reauth-step-number">2</div><div class="system-reauth-step-copy"><strong>Reauthorize the affected Google connector</strong><span>In Replit connected services, choose the Google Drive or Google Sheets connection named in System Log and select Reauthorize. Approve the requested access, then return here.</span><small data-reauth-step-status="2">Complete step 1 only if sign-in is required.</small><button class="btn btn-secondary btn-sm" type="button" data-reauth-confirm disabled><i class="fa-solid fa-check"></i> I reauthorized the connector</button></div></li>' +
+            '<li data-reauth-step="3"><div class="system-reauth-step-number">3</div><div class="system-reauth-step-copy"><strong>Refresh protected status</strong><span>Run one fresh protected check. Connected Drive and connected or read-only Sheets statuses terminate recovery; verified write access is reported separately.</span><small data-reauth-step-status="3">Complete connector reauthorization first.</small><button class="btn btn-secondary btn-sm" type="button" data-reauth-refresh disabled><i class="fa-solid fa-rotate"></i> Refresh protected status</button></div></li></ol>' +
             '<div class="system-reauth-result" data-reauth-result role="status">No credentials or Google tokens are shown or stored in this workspace screen.</div></div>' +
             '<div class="modal-footer"><button class="btn btn-secondary" type="button" data-reauth-close>Close</button></div></div>';
         document.body.appendChild(modal);
@@ -1780,6 +1797,13 @@
         var statusOne = modal.querySelector('[data-reauth-step-status="1"]');
         var statusTwo = modal.querySelector('[data-reauth-step-status="2"]');
         var statusThree = modal.querySelector('[data-reauth-step-status="3"]');
+        var openingSnapshot = window.StopLossCloud && typeof window.StopLossCloud.connectionSnapshot === 'function'
+            ? window.StopLossCloud.connectionSnapshot() : { states: {} };
+        var openingStates = openingSnapshot.states || {};
+        var affectedConnectors = {
+            sheets: !!(openingStates.sheets && openingStates.sheets.metadata && openingStates.sheets.metadata.recoveryAction === 'google_reauthorization'),
+            drive: !!(openingStates.drive && openingStates.drive.metadata && openingStates.drive.metadata.recoveryAction === 'google_reauthorization')
+        };
         var confirmed = false;
         var closed = false;
         function currentStates() {
@@ -1788,27 +1812,28 @@
             var states = snapshot.states || {};
             var session = states.session || {};
             var sheets = states.sheets || {};
+            var drive = states.drive || {};
             var sessionConnected = /connected/i.test(String(session.status || ''));
-            var sheetsRecovered = /connected/i.test(String(sheets.status || '')) && !/reauthorization required|expired|unavailable|failed/i.test(String(sheets.status || '') + ' ' + String(sheets.detail || ''));
-            return { session: session, sheets: sheets, sessionConnected: sessionConnected, sheetsRecovered: sheetsRecovered };
+            var recovery = googleConnectorRecoveryState(states, affectedConnectors);
+            return { session: session, sheets: sheets, drive: drive, sessionConnected: sessionConnected, sheetsRecovered: recovery.sheetsRecovered, driveRecovered: recovery.driveRecovered, googleRecovered: recovery.complete };
         }
         function updateGuide() {
             if (closed) return;
             var state = currentStates();
             var sessionConnected = state.sessionConnected;
             statusOne.textContent = sessionConnected ? 'Application session is connected.' : 'Waiting for secure application sign-in.';
-            statusTwo.textContent = state.sheetsRecovered ? 'Google Sheets access is responding.' : confirmed ? 'Marked complete; refresh status to verify it.' : sessionConnected ? 'Open the connected-services panel and reauthorize Google Sheets.' : 'Complete step 1 first.';
-            statusThree.textContent = state.sheetsRecovered ? 'Protected status is healthy. Writes remain subject to the reported capability.' : confirmed ? 'Ready to run a protected check.' : 'Complete step 2 first.';
+            statusTwo.textContent = state.googleRecovered ? 'The affected Google connector live read is responding.' : confirmed ? 'Marked complete; refresh status to verify it.' : sessionConnected ? 'Open Replit connected services and reauthorize only the affected connector.' : 'Complete step 1 first.';
+            statusThree.textContent = state.googleRecovered ? 'Protected status is healthy. Writes remain subject to the reported capability.' : confirmed ? 'Ready to run a protected check.' : 'Complete step 2 first.';
             signInButton.disabled = sessionConnected;
             signInButton.innerHTML = sessionConnected ? '<i class="fa-solid fa-circle-check"></i> Application signed in' : '<i class="fa-solid fa-right-to-bracket"></i> Sign in / reconnect';
-            confirmButton.disabled = !sessionConnected || state.sheetsRecovered;
-            refreshButton.disabled = !confirmed && !state.sheetsRecovered;
+            confirmButton.disabled = !sessionConnected || state.googleRecovered;
+            refreshButton.disabled = !confirmed && !state.googleRecovered;
             modal.querySelector('[data-reauth-step="1"]').className = sessionConnected ? 'is-complete' : 'is-active';
-            modal.querySelector('[data-reauth-step="2"]').className = state.sheetsRecovered ? 'is-complete' : sessionConnected ? 'is-active' : '';
-            modal.querySelector('[data-reauth-step="3"]').className = state.sheetsRecovered ? 'is-complete' : confirmed ? 'is-active' : '';
-            if (state.sheetsRecovered) {
+            modal.querySelector('[data-reauth-step="2"]').className = state.googleRecovered ? 'is-complete' : sessionConnected ? 'is-active' : '';
+            modal.querySelector('[data-reauth-step="3"]').className = state.googleRecovered ? 'is-complete' : confirmed ? 'is-active' : '';
+            if (state.googleRecovered) {
                 result.className = 'system-reauth-result success';
-                result.innerHTML = '<i class="fa-solid fa-circle-check"></i> Google Sheets is responding again. You can close this guide and continue with protected reads; write capability will remain truthful to the status above.';
+                result.innerHTML = '<i class="fa-solid fa-circle-check"></i> The affected Google connector live read is responding. Recovery is complete; an independently unavailable or permission-denied Google service does not keep this connector in a reauthorization loop.';
             } else if (confirmed) {
                 result.className = 'system-reauth-result';
                 result.textContent = 'The connection was marked for verification. Refresh protected status to confirm that Google Sheets access is restored.';
@@ -1829,18 +1854,18 @@
         };
         confirmButton.onclick = function () {
             confirmed = true;
-            if (typeof systemEvent === 'function') systemEvent('GOOGLE_REAUTH_CONNECTION_REVIEWED', 'Pending review', 'Operator reported that Google Sheets reauthorization was completed; protected status still requires verification.', { source: 'Google Sheets recovery guide' });
+            if (typeof systemEvent === 'function') systemEvent('GOOGLE_REAUTH_CONNECTION_REVIEWED', 'Pending review', 'Operator reported that managed Google connector reauthorization was completed; protected status still requires verification.', { source: 'Google connector recovery guide' });
             updateGuide();
         };
         refreshButton.onclick = function () {
             refreshButton.disabled = true;
             result.className = 'system-reauth-result';
-            result.textContent = 'Checking the protected Google Sheets connection…';
+            result.textContent = 'Checking the protected Google Drive and Sheets connections…';
             var request = window.StopLossCloud && typeof window.StopLossCloud.refreshStatus === 'function'
                 ? window.StopLossCloud.refreshStatus() : Promise.resolve();
             Promise.resolve(request).then(function () {
                 var state = currentStates();
-                if (typeof systemEvent === 'function') systemEvent('GOOGLE_REAUTH_STATUS_CHECKED', state.sheetsRecovered ? 'Completed' : 'Failed', state.sheets.detail || 'Completed a protected Google Sheets authorization check.', { source: 'Google Sheets recovery guide', status: state.sheets.status || 'Unknown', errorCode: state.sheets.metadata && state.sheets.metadata.code || null });
+                if (typeof systemEvent === 'function') systemEvent('GOOGLE_REAUTH_STATUS_CHECKED', state.googleRecovered ? 'Completed' : 'Failed', state.googleRecovered ? 'The affected Google connector live read succeeded.' : state.sheets.detail || state.drive.detail || 'Completed a protected Google connector authorization check.', { source: 'Google connector recovery guide', status: state.googleRecovered ? 'Connected' : (state.sheets.status || state.drive.status || 'Unknown'), errorCode: state.sheets.metadata && state.sheets.metadata.code || state.drive.metadata && state.drive.metadata.code || null });
                 updateGuide();
             }).catch(function (error) {
                 result.className = 'system-reauth-result error';
@@ -1888,15 +1913,19 @@
         var apiOriginControl = cloud.isFile ? '<div class="system-cloud-field"><label for="system-cloud-api-origin">Hosted API origin for downloaded HTML</label><div class="system-cloud-inline"><input id="system-cloud-api-origin" type="url" placeholder="https://your-app.replit.app" value="' + esc(cloud.apiOrigin || '') + '"><button class="btn btn-secondary btn-sm" type="button" onclick="StopLossCloud.saveApiOrigin(document.getElementById(&quot;system-cloud-api-origin&quot;).value)">Save API origin</button></div><small>Use the hosted app origin only. Credentials and tokens are never stored in this HTML export.</small></div>' : '';
         var sessionControl = cloud.isFile ? '<div class="system-cloud-actions"><button class="btn btn-primary btn-sm" type="button" onclick="StopLossCloud.connectPortableSession()"><i class="fa-solid fa-right-to-bracket"></i> ' + (sessionState.status === 'Connected' ? 'Reconnect cloud session' : 'Connect cloud session') + '</button></div>' : '<div class="system-cloud-actions"><span class="system-log-muted">Secure application sign-in protects cloud APIs. Google credentials and refresh tokens remain server-managed.</span><button class="btn btn-primary btn-sm" type="button" onclick="StopLossCloud.connectHostedSession()"><i class="fa-solid fa-right-to-bracket"></i> Sign in / reconnect</button><button class="btn btn-secondary btn-sm" type="button" onclick="StopLossCloud.refreshStatus()"><i class="fa-solid fa-rotate"></i> Refresh protected status</button></div>';
         var needsSession = /session required|portable session/i.test(String(sessionState.status || '')) || /session required|portable session/i.test(String(sheetState.status || '') + ' ' + String(driveState.status || ''));
-        var needsProviderRefresh = /provider unavailable|authorization unavailable|reauthorization required|failed/i.test(String(sheetState.status || '') + ' ' + String(driveState.status || '') + ' ' + String(authorizationState.status || ''));
-        var needsGoogleReauth = /reauthorization required|invalid_grant|requires re-authorization/i.test(String(sheetState.status || '') + ' ' + String(sheetState.detail || '') + ' ' + String(driveState.status || '') + ' ' + String(driveState.detail || ''));
+        var providerMetadata = [sheetState.metadata || {}, driveState.metadata || {}];
+        var needsProviderRefresh = providerMetadata.some(function (metadata) { return metadata.retryable === true || metadata.recoveryAction === 'protected_status_refresh'; }) || /provider unavailable|authorization unavailable|rate limited|resource not found|failed/i.test(String(sheetState.status || '') + ' ' + String(driveState.status || '') + ' ' + String(authorizationState.status || ''));
+        var needsGoogleReauth = providerMetadata.some(function (metadata) { return metadata.recoveryAction === 'google_reauthorization'; });
+        var needsPermissionReview = providerMetadata.some(function (metadata) { return metadata.recoveryAction === 'permission_review'; });
         var needsAllowlistFix = /allowlist not configured|allowlist invalid/i.test(String(authorizationState.status || ''));
         var recoveryControl = needsAllowlistFix
             ? '<div class="system-cloud-recovery"><strong>Administrator action required.</strong><span>Update the server authorized-user setting, then re-check protected access.</span><button class="btn btn-secondary btn-sm" type="button" onclick="StopLossCloud.refreshStatus()"><i class="fa-solid fa-rotate"></i> Re-check authorization</button></div>'
-             : needsSession || needsProviderRefresh
+             : needsSession || needsProviderRefresh || needsGoogleReauth || needsPermissionReview
                 ? needsGoogleReauth
-                    ? '<div class="system-cloud-recovery system-cloud-recovery-reauth"><div class="system-cloud-recovery-copy"><strong>Google reauthorization required.</strong><span>Google Sheets authorization has expired. Sign in first, reauthorize Google Sheets in the connected-services panel, then verify access here.</span></div><button class="btn btn-primary btn-sm" type="button" onclick="openGoogleReauthorizationGuide()"><i class="fa-solid fa-list-check"></i> Open recovery steps</button></div>'
-                    : '<div class="system-cloud-recovery"><strong>' + (needsSession ? 'Session recovery required.' : 'Provider recovery available.') + '</strong><span>' + (needsSession ? 'Connect or refresh the protected session before cloud checks run.' : 'Refresh the protected status to check Drive and Sheets again.') + '</span><button class="btn btn-secondary btn-sm" type="button" onclick="StopLossCloud.recoverCloudAccess()"><i class="fa-solid fa-wand-magic-sparkles"></i> Recover cloud access</button></div>'
+                    ? '<div class="system-cloud-recovery system-cloud-recovery-reauth"><div class="system-cloud-recovery-copy"><strong>Google reauthorization required.</strong><span>The managed connector explicitly reported an expired, revoked, invalid, or disconnected authorization. Reauthorize the affected Google connection in Replit, then verify access here; application sign-in is separate and is needed only when the session status says so.</span></div><button class="btn btn-primary btn-sm" type="button" onclick="openGoogleReauthorizationGuide()"><i class="fa-solid fa-list-check"></i> Open connector recovery</button></div>'
+                    : needsPermissionReview
+                        ? '<div class="system-cloud-recovery"><strong>Google permission review required.</strong><span>The connection is present, but the account, resource permission, or approved OAuth scope does not allow this request. Review access with an administrator; repeated reauthorization is not the next step.</span><button class="btn btn-secondary btn-sm" type="button" onclick="StopLossCloud.refreshStatus()"><i class="fa-solid fa-rotate"></i> Refresh after permission review</button></div>'
+                        : '<div class="system-cloud-recovery"><strong>' + (needsSession ? 'Session recovery required.' : 'Provider recovery available.') + '</strong><span>' + (needsSession ? 'Connect or refresh the protected session before cloud checks run.' : 'The provider failure is retryable. Refresh protected status; pending changes remain retained and no reauthorization is requested.') + '</span><button class="btn btn-secondary btn-sm" type="button" onclick="StopLossCloud.recoverCloudAccess()"><i class="fa-solid fa-wand-magic-sparkles"></i> Refresh protected status</button></div>'
                 : '';
         var workbookLink = cloud.links && cloud.links.workbook ? '<a href="' + esc(cloud.links.workbook) + '" target="_blank" rel="noopener" class="system-cloud-link">Open active workbook</a>' : '';
         var sourceLink = cloud.links && cloud.links.source ? '<a href="' + esc(cloud.links.source) + '" target="_blank" rel="noopener" class="system-cloud-link">Open source extract</a>' : '';
@@ -2983,22 +3012,24 @@
         });
         var readiness = state.licensingReadiness || {};
         var mode = state.licensingMode || 'simulation';
+        var modeLabel = mode === 'live' ? 'Live — external DOI/provider transport' : 'Sandbox / developer simulation';
         return '<div class="card licensing-doi-card"><div class="card-header"><div class="card-title"><i class="fa-solid fa-shield-halved"></i> Licensing &amp; DOI activity</div><span class="ls-badge ' + (mode === 'live' ? 'ls-badge-active' : 'ls-badge-pending') + '">' + esc(mode) + '</span></div><div class="card-body">' +
-            '<div class="licensing-mode-panel"><div><strong>Regulatory operating mode</strong><p>Simulation uses the current protected outbox and marks every result simulated. Live remains fail-closed until a provider, supported capability, authorization, and healthy connection are verified.</p></div><div class="licensing-mode-toggle" role="group" aria-label="Regulatory operating mode"><button type="button" class="btn btn-sm ' + (mode === 'simulation' ? 'btn-navy' : 'btn-secondary') + '" data-licensing-mode="simulation">Simulation</button><button type="button" class="btn btn-sm ' + (mode === 'live' ? 'btn-navy' : 'btn-secondary') + '" data-licensing-mode="live">Live</button></div></div>' +
+            '<div class="licensing-mode-panel"><div><strong>Regulatory operating mode</strong><p><strong>' + esc(modeLabel) + '.</strong> Sandbox / developer mode uses the protected outbox and never submits to a DOI or external provider. Live mode is the external DOI/provider path and remains fail-closed until a provider, supported capability, authorization, and healthy connection are verified.</p></div><div class="licensing-mode-toggle" role="group" aria-label="Regulatory operating mode"><button type="button" class="btn btn-sm ' + (mode === 'simulation' ? 'btn-navy' : 'btn-secondary') + '" data-licensing-mode="simulation" title="Sandbox / developer mode — no DOI or external provider request">Sandbox / developer</button><button type="button" class="btn btn-sm ' + (mode === 'live' ? 'btn-navy' : 'btn-secondary') + '" data-licensing-mode="live" title="Live external DOI/provider transport">Live DOI/provider</button></div></div>' +
             '<div class="system-cloud-status-grid"><div><span>Provider</span><strong>' + esc(readiness.provider || 'Not configured') + '</strong><small>Provider-neutral boundary</small></div><div><span>Capability</span><strong>' + esc(readiness.capability || 'Appointment submission') + '</strong><small>' + esc(readiness.ready ? 'Supported' : 'Not verified') + '</small></div><div><span>Authorization</span><strong>' + esc(readiness.authorized ? 'Authorized' : 'Unavailable') + '</strong><small>No credential values shown</small></div><div><span>Health / readiness</span><strong>' + esc(readiness.ready ? 'Ready' : 'Not ready') + '</strong><small>' + esc((readiness.missing || []).join(', ') || readiness.status || '') + '</small></div></div>' +
             '<div class="licensing-activity-chart" aria-label="Licensing and DOI activity counts"><div><strong>' + regulatory.length + '</strong><span>Total</span></div><div><strong>' + counts.request + '</strong><span>Requests</span></div><div><strong>' + counts.response + '</strong><span>Responses</span></div><div><strong>' + counts.blocked + '</strong><span>Blocked</span></div><div><strong>' + counts.simulated + '</strong><span>Simulated</span></div></div>' +
             '<div class="system-log-toolbar licensing-doi-filters"><div class="form-group"><label>Jurisdiction</label><select class="form-control" data-lic-filter="jurisdiction"><option value="">All</option>' + states.map(function (value) { return '<option' + (licensingEventFilters.jurisdiction === value ? ' selected' : '') + '>' + esc(value) + '</option>'; }).join('') + '</select></div><div class="form-group"><label>Producer / agency / work item</label><input class="form-control" data-lic-filter="party" value="' + esc(licensingEventFilters.party) + '" placeholder="Entity link"></div><div class="form-group"><label>Direction</label><select class="form-control" data-lic-filter="direction"><option value="">All</option><option value="request"' + (licensingEventFilters.direction === 'request' ? ' selected' : '') + '>Request</option><option value="response"' + (licensingEventFilters.direction === 'response' ? ' selected' : '') + '>Response</option><option value="internal"' + (licensingEventFilters.direction === 'internal' ? ' selected' : '') + '>Internal</option></select></div><div class="form-group"><label>Event type</label><select class="form-control" data-lic-filter="type"><option value="">All</option>' + types.map(function (value) { return '<option value="' + esc(value) + '"' + (licensingEventFilters.type === value ? ' selected' : '') + '>' + esc(eventTypeLabel(value)) + '</option>'; }).join('') + '</select></div><div class="form-group"><label>Status</label><select class="form-control" data-lic-filter="status"><option value="">All</option>' + statuses.map(function (value) { return '<option value="' + esc(value) + '"' + (licensingEventFilters.status === value ? ' selected' : '') + '>' + esc(value) + '</option>'; }).join('') + '</select></div><div class="form-group"><label>Source / mode</label><input class="form-control" data-lic-filter="sourceMode" value="' + esc(licensingEventFilters.sourceMode) + '" placeholder="Simulation, NIPR…"></div><div class="form-group"><label>Correlation</label><input class="form-control" data-lic-filter="correlation" value="' + esc(licensingEventFilters.correlation) + '" placeholder="Operation ID"></div></div>' +
-            '<div class="system-log-table-wrap"><table class="data-table system-log-table" id="licensing-doi-events-table"><thead><tr><th>Time</th><th>Jurisdiction</th><th>Producer / agency</th><th>Direction</th><th>Event / status</th><th>Source / mode</th><th>Transaction correlation</th></tr></thead><tbody>' + (visible.length ? visible.map(function (event) { var metadata = event.metadata || {}; return '<tr><td>' + systemTime(event.timestamp) + '</td><td>' + esc(metadata.jurisdiction || metadata.state || '—') + '</td><td>' + esc(metadata.producerId || metadata.agencyId || metadata.entityId || '—') + '<small>' + esc(metadata.workItemId || metadata.policyOrQuote || '') + '</small></td><td>' + esc(metadata.direction || 'internal') + '</td><td><strong>' + esc(eventTypeLabel(event.action)) + '</strong><small>' + systemStatusBadge(event.status) + '</small></td><td>' + esc(metadata.source || event.source || 'Producer Licensing') + '<small>' + esc(metadata.mode || 'simulation') + '</small></td><td class="mono">' + esc(metadata.correlationId || metadata.operationId || '—') + '</td></tr>'; }).join('') : '<tr><td colspan="7">No Licensing &amp; DOI activity matches these filters.</td></tr>') + '</tbody></table></div></div></div>';
+            '<div class="system-log-table-wrap"><table class="data-table system-log-table" id="licensing-doi-events-table"><thead><tr><th>Time</th><th>Jurisdiction</th><th>Producer / agency</th><th>Direction</th><th>Event / status</th><th>Source / mode</th><th>Transaction correlation</th></tr></thead><tbody>' + (visible.length ? visible.map(function (event) { var metadata = event.metadata || {}; return '<tr><td>' + systemTime(event.timestamp) + '</td><td>' + esc(metadata.jurisdiction || metadata.state || '—') + '</td><td>' + esc(metadata.producerId || metadata.agencyId || metadata.entityId || '—') + '<small>' + esc(metadata.workItemId || metadata.policyOrQuote || '') + '</small></td><td>' + esc(metadata.direction || 'internal') + '</td><td><strong>' + esc(eventTypeLabel(event.action)) + '</strong><small>' + systemStatusBadge(event.status) + '</small></td><td>' + esc(metadata.source || event.source || 'Producer Licensing') + '<small>' + esc(metadata.modeLabel || metadata.mode || 'Sandbox / developer simulation') + '</small></td><td class="mono">' + esc(metadata.correlationId || metadata.operationId || '—') + '</td></tr>'; }).join('') : '<tr><td colspan="7">No Licensing &amp; DOI activity matches these filters.</td></tr>') + '</tbody></table></div></div></div>';
     }
 
     async function setLicensingOperatingMode(mode) {
         var state = getSystemLogState();
         if (mode === 'simulation') {
             if (state.licensingMode !== 'simulation') {
+                var simulationPersisted = true;
+                if (window.LicensingSuite && typeof window.LicensingSuite.setOperatingMode === 'function') simulationPersisted = await window.LicensingSuite.setOperatingMode('simulation', state.licensingReadiness);
                 state.licensingMode = 'simulation';
                 saveSystemLogState();
-                if (window.LicensingSuite && typeof window.LicensingSuite.setOperatingMode === 'function') window.LicensingSuite.setOperatingMode('simulation', state.licensingReadiness);
-                systemEvent('LICENSING_MODE_CHANGED', 'Completed', 'Regulatory operating mode changed to Simulation. No live NIPR, DOI, carrier, payment, or accounting transaction occurred.', { category: 'Licensing & DOI', mode: 'simulation', direction: 'internal', source: 'System Log operating-mode control', operationId: 'MODE-SIMULATION' });
+                systemEvent('LICENSING_MODE_CHANGED', simulationPersisted ? 'Completed' : 'Warning', simulationPersisted ? 'Regulatory operating mode changed to Sandbox / developer simulation. No live NIPR, DOI, carrier, payment, or accounting transaction occurred.' : 'The browser is in Sandbox / developer simulation, but the protected licensing state could not be updated. No external request was submitted.', { category: 'Licensing & DOI', mode: 'simulation', modeLabel: 'Sandbox / developer simulation', direction: 'internal', source: 'System Log operating-mode control', operationId: 'MODE-SIMULATION' });
             }
             renderSystemLog();
             return;
@@ -3034,17 +3065,27 @@
             renderSystemLog();
             return;
         }
+        var activated = window.LicensingSuite && typeof window.LicensingSuite.setOperatingMode === 'function'
+            ? await window.LicensingSuite.setOperatingMode('live', state.licensingReadiness)
+            : false;
+        if (!activated) {
+            state.licensingMode = 'simulation';
+            saveSystemLogState();
+            systemEvent('LICENSING_LIVE_ACTIVATION_BLOCKED', 'Blocked', 'Live mode was not persisted by the protected server after its final readiness check. No regulatory request was submitted.', { category: 'Licensing & DOI', mode: 'live', direction: 'internal', source: 'Protected regulatory transport control', operationId: 'MODE-LIVE-PERSIST', correlationId: 'MODE-LIVE-PERSIST', ready: false });
+            if (window.showTinubuNotice) window.showTinubuNotice('Live regulatory mode was not activated by the protected server.', true);
+            renderSystemLog();
+            return;
+        }
         state.licensingMode = 'live';
         saveSystemLogState();
-        if (window.LicensingSuite && typeof window.LicensingSuite.setOperatingMode === 'function') window.LicensingSuite.setOperatingMode('live', state.licensingReadiness);
-        systemEvent('LICENSING_MODE_CHANGED', 'Completed', 'Regulatory operating mode changed to Live after provider readiness verification.', { category: 'Licensing & DOI', mode: 'live', direction: 'internal', source: 'System Log operating-mode control', operationId: 'MODE-LIVE' });
+        systemEvent('LICENSING_MODE_CHANGED', 'Completed', 'Regulatory operating mode changed to Live DOI/provider transport after provider readiness verification and protected persistence.', { category: 'Licensing & DOI', mode: 'live', modeLabel: 'Live — external DOI/provider transport', direction: 'internal', source: state.licensingReadiness.provider || 'Protected regulatory transport control', operationId: 'MODE-LIVE' });
         renderSystemLog();
     }
 
     function licensingEventMatches(event) {
         var metadata = event.metadata || {};
         var party = [metadata.producerId, metadata.agencyId, metadata.entityId, metadata.workItemId].filter(Boolean).join(' ');
-        var sourceMode = [event.source, metadata.source, metadata.mode].filter(Boolean).join(' ');
+        var sourceMode = [event.source, metadata.source, metadata.modeLabel, metadata.mode].filter(Boolean).join(' ');
         return (!licensingEventFilters.jurisdiction || String(metadata.jurisdiction || metadata.state || '').toUpperCase() === licensingEventFilters.jurisdiction)
             && (!licensingEventFilters.party || party.toLowerCase().indexOf(licensingEventFilters.party.toLowerCase()) >= 0)
             && (!licensingEventFilters.direction || String(metadata.direction || 'internal') === licensingEventFilters.direction)

@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { resolve } from "node:path";
 import { Router, type IRouter } from "express";
 import { and, eq, sql } from "drizzle-orm";
@@ -12,8 +13,14 @@ import {
   stateRule,
 } from "../lib/licensing-rules";
 import { deriveLicensingAudits, mergeServerAudits } from "../lib/licensing-audit";
+import {
+  createRegulatoryGatewayAdapter,
+  REGULATORY_TRANSPORT_CONTRACTS,
+  type RegulatoryTransportHealth,
+} from "../lib/regulatory-transport";
 
 const router: IRouter = Router();
+export const regulatoryCallbackRouter: IRouter = Router();
 
 type License = { state?: string; status?: string; effDate?: string; expDate?: string; effectiveDate?: string; expirationDate?: string; agentId?: unknown };
 type Brokerage = { name?: string; status?: string; states?: string[]; effDate?: string; expDate?: string; effectiveDate?: string; expirationDate?: string; lineOfAuthority?: unknown; ahAuthority?: unknown; entityClassification?: string };
@@ -222,6 +229,19 @@ const transportSubmitInput = z.object({
   operationId: z.string().trim().min(1).max(200),
   transaction: z.record(z.unknown()),
 });
+const transportModeInput = z.object({
+  version: z.number().int().positive(),
+  mode: z.enum(["simulation", "live"]),
+});
+const transportCallbackInput = z.object({
+  operationId: z.string().trim().min(1).max(200),
+  eventId: z.string().trim().min(1).max(200),
+  sequence: z.number().int().nonnegative(),
+  externalTransactionId: z.string().trim().min(1).max(200).optional(),
+  status: z.string().trim().min(1).max(100),
+  externalConfirmation: z.boolean(),
+  occurredAt: z.string().trim().max(100).optional(),
+});
 
 const canonicalDate = (value: unknown): string => {
   const raw = String(value ?? "").trim();
@@ -292,19 +312,42 @@ function canonicalState(
     appointmentOutbox: Array.isArray(serverManagedState.appointmentOutbox) ? serverManagedState.appointmentOutbox : [],
     appointmentLedger: Array.isArray(serverManagedState.appointmentLedger) ? serverManagedState.appointmentLedger : [],
   } : {};
+  const existingTransport = serverManagedState?.regulatoryTransport && typeof serverManagedState.regulatoryTransport === "object"
+    ? serverManagedState.regulatoryTransport as Record<string, unknown>
+    : null;
+  const protectedMode = serverManagedState?.licensingMode === "live"
+    && existingTransport?.ready === true
+    && existingTransport.liveActivationAllowed === true
+    ? "live"
+    : "simulation";
+  const protectedTransportState = existingTransport
+    ? {
+        ...existingTransport,
+        mode: protectedMode,
+        ready: protectedMode === "live" && existingTransport.ready === true,
+      }
+    : {
+        mode: "simulation",
+        provider: null,
+        capability: "appointment-submission",
+        configured: false,
+        authorized: false,
+         capabilityAuthorized: false,
+         callbackConfigured: false,
+         certificationReviewed: false,
+         liveActivationAllowed: false,
+        healthy: false,
+        ready: false,
+        status: "NOT_CONFIGURED",
+        missing: ["supported provider", "HTTPS gateway URL", "supported capability", "authorization", "healthy connection"],
+        contracts: REGULATORY_TRANSPORT_CONTRACTS,
+      };
   return {
     ...safeInput,
     ...protectedAppointmentState,
     licensingRules: AH_LICENSING_RULES,
-    licensingMode: "simulation",
-    regulatoryTransport: {
-      provider: null,
-      capability: "appointment-submission",
-      configured: false,
-      authorized: false,
-      healthy: false,
-      readiness: "NOT_CONFIGURED",
-    },
+    licensingMode: protectedMode,
+    regulatoryTransport: protectedTransportState,
     brokerages,
     agents,
     stateLicenses: input.stateLicenses.map((item) => ({ ...dates(item), status: item.status ?? (item.active ? "Active" : "Expired") })),
@@ -782,7 +825,7 @@ router.post("/licensing/appointment-work-items", async (req, res, next) => {
       entityLinks: { producerId: agentId, agencyId: brokerageId, workItemId: id },
     });
     const parsed = stateInput.parse({ ...currentStateValue, appointmentWorkItems: [workItem, ...workItems] });
-    const nextState = canonicalState(parsed, audit, priorAudit);
+    const nextState = canonicalState(parsed, audit, priorAudit, currentStateValue, actor);
     const updated = await db.update(licensingStateTable).set({
       state: nextState,
       version: sql`${licensingStateTable.version} + 1`,
@@ -812,7 +855,7 @@ router.post("/licensing/appointment-work-items/:id/transition", async (req, res,
     if (!item) return res.status(404).json({ error: "Appointment work item was not found." });
     const allowed: Record<string, string[]> = {
       submit: ["READY_FOR_REVIEW"],
-      resolve: ["SUBMITTED_SIMULATED"],
+      resolve: ["SUBMITTED_SIMULATED", "SUBMITTED_LIVE", "CONFIRMED_EXTERNAL"],
       cancel: ["READY_FOR_REVIEW", "SUBMITTED_SIMULATED"],
       terminate: ["RESOLVED_REVIEWED"],
     };
@@ -826,11 +869,182 @@ router.post("/licensing/appointment-work-items/:id/transition", async (req, res,
     const ledger = Array.isArray(currentStateValue.appointmentLedger)
       ? (currentStateValue.appointmentLedger as Record<string, unknown>[]).map((entry) => ({ ...entry }))
       : [];
+    const requestedLiveMode = currentStateValue.licensingMode === "live";
+    const dispatchReadiness = input.action === "submit" && requestedLiveMode
+      ? await regulatoryReadiness()
+      : null;
+    if (input.action === "submit" && requestedLiveMode && !dispatchReadiness?.liveActivationAllowed) {
+      return res.status(503).json({
+        accepted: false,
+        mode: "simulation",
+        status: dispatchReadiness?.ready
+          ? "BLOCKED_CERTIFICATION_REVIEW_REQUIRED"
+          : "BLOCKED_NOT_READY",
+        error: dispatchReadiness?.ready
+          ? "Live regulatory transport is blocked until sandbox certification evidence is reviewed."
+          : "Live regulatory transport is not configured or verified.",
+        readiness: dispatchReadiness,
+      });
+    }
+    const liveMode = requestedLiveMode && dispatchReadiness?.liveActivationAllowed === true;
+    let transportProvider = "simulation";
+    let transportStatus = "SIMULATED_ACCEPTED";
+    if (input.action === "submit" && liveMode) {
+      const payload = appointmentPayload(item, now);
+      const payloadDigest = createHash("sha256").update(JSON.stringify(payload.transaction)).digest("base64url");
+      const outboxId = `AO-${now.getTime()}-${Math.random().toString(36).slice(2, 7)}`;
+      item.status = "SENDING_LIVE";
+      item.outboxId = outboxId;
+      item.updatedAt = now.toISOString();
+      item.history = [{
+        at: now.toISOString(),
+        actor,
+        action: "SUBMIT_CLAIMED",
+        reason: input.reason,
+        from: beforeStatus,
+        to: item.status,
+      }, ...(Array.isArray(item.history) ? item.history : [])];
+      outbox.unshift({
+        id: outboxId,
+        workItemId: item.id,
+        operationId: item.operationId,
+        correlationId: item.operationId,
+        payloadDigest,
+        status: "DISPATCHING",
+        mode: "live",
+        provider: (currentStateValue.regulatoryTransport as Record<string, unknown> | undefined)?.provider ?? null,
+        createdAt: now.toISOString(),
+        actor,
+        // Keep the durable claim intentionally minimal. The full provider
+        // transaction is derived from the protected work item only in memory.
+        transactionSummary: {
+          workItemId: item.id,
+          state: item.state,
+          carrierCode: item.carrierCode ?? null,
+          appointmentRuleId: item.appointmentRuleId,
+        },
+      });
+      const priorAudit = Array.isArray(currentStateValue.auditLogs) ? currentStateValue.auditLogs as unknown[] : [];
+      const claimAudit = appointmentAudit("APPOINTMENT_SUBMIT_CLAIMED", {
+        workItemId: item.id,
+        operationId: item.operationId,
+        payloadDigest,
+      }, String(item.id), actor, now, {
+        operationId: item.operationId,
+        correlationId: item.operationId,
+        status: "Dispatching",
+        source: (currentStateValue.regulatoryTransport as Record<string, unknown> | undefined)?.provider ?? "Regulatory gateway",
+        mode: "live",
+        direction: "request",
+        entityLinks: { producerId: item.producerId, agencyId: item.brokerageId, workItemId: item.id },
+      });
+      const claimParsed = stateInput.parse({ ...currentStateValue, appointmentWorkItems: workItems, appointmentOutbox: outbox, appointmentLedger: ledger });
+      const claimedState = canonicalState(claimParsed, claimAudit, priorAudit, currentStateValue, actor);
+      const claimed = await db.update(licensingStateTable).set({
+        state: claimedState,
+        version: sql`${licensingStateTable.version} + 1`,
+        updatedAt: now,
+        updatedBy: actor,
+      }).where(and(eq(licensingStateTable.id, 1), eq(licensingStateTable.version, input.version))).returning();
+      if (!claimed[0]) {
+        return res.status(409).json({ error: "Licensing state was updated by another user.", current: response(await currentState()) });
+      }
+
+      const result = await createRegulatoryGatewayAdapter().submit({
+        operationId: String(item.operationId),
+        transaction: payload.transaction,
+      });
+      const latest = await currentState();
+      const latestState = latest.state as CanonicalState;
+      const latestItems = Array.isArray(latestState.appointmentWorkItems)
+        ? (latestState.appointmentWorkItems as Record<string, unknown>[]).map((entry) => ({ ...entry }))
+        : [];
+      const latestItem = latestItems.find((entry) => String(entry.operationId) === String(item.operationId));
+      if (!latestItem) return res.status(409).json({ error: "The claimed regulatory work item could not be reconciled.", current: response(latest) });
+      const latestOutbox = Array.isArray(latestState.appointmentOutbox)
+        ? (latestState.appointmentOutbox as Record<string, unknown>[]).map((entry) => ({ ...entry }))
+        : [];
+      const latestOutboxEntry = latestOutbox.find((entry) => String(entry.operationId) === String(item.operationId));
+      const existingTransport = latestItem.transport && typeof latestItem.transport === "object"
+        ? latestItem.transport as Record<string, unknown>
+        : {};
+      const existingResponse = existingTransport.asynchronousResponse && typeof existingTransport.asynchronousResponse === "object"
+        ? existingTransport.asynchronousResponse as Record<string, unknown>
+        : null;
+      const existingConfirmation = existingResponse?.externalConfirmation === true || latestItem.status === "CONFIRMED_EXTERNAL";
+      const externalConfirmation = existingConfirmation || result.asynchronousResponse?.externalConfirmation === true;
+      const effectiveResponse = existingConfirmation
+        ? existingResponse
+        : result.asynchronousResponse;
+      const failureUnknown = result.error?.code === "PROVIDER_NETWORK_ERROR" || result.error?.code === "PROVIDER_RETRY_EXHAUSTED";
+      latestItem.status = externalConfirmation
+        ? "CONFIRMED_EXTERNAL"
+        : result.accepted
+          ? "SUBMITTED_LIVE"
+          : failureUnknown ? "SUBMISSION_UNKNOWN" : "SUBMISSION_FAILED";
+      latestItem.updatedAt = new Date().toISOString();
+      latestItem.transport = {
+        ...result,
+        asynchronousResponse: effectiveResponse,
+      };
+      latestItem.history = [{
+        at: latestItem.updatedAt,
+        actor,
+        action: result.accepted ? "SUBMIT_ACKNOWLEDGED" : failureUnknown ? "SUBMIT_OUTCOME_UNKNOWN" : "SUBMIT_FAILED",
+        reason: result.error?.message ?? result.asynchronousResponse?.status ?? result.acknowledgement?.status ?? "Provider response recorded.",
+        from: "SENDING_LIVE",
+        to: latestItem.status,
+      }, ...(Array.isArray(latestItem.history) ? latestItem.history : [])];
+      if (latestOutboxEntry) {
+        latestOutboxEntry.status = latestItem.status;
+        latestOutboxEntry.updatedAt = latestItem.updatedAt;
+        latestOutboxEntry.transport = latestItem.transport;
+      }
+      const latestPriorAudit = Array.isArray(latestState.auditLogs) ? latestState.auditLogs as unknown[] : [];
+      const resultAudit = appointmentAudit(
+        result.accepted ? externalConfirmation ? "APPOINTMENT_EXTERNAL_CONFIRMED" : "APPOINTMENT_EXTERNAL_ACKNOWLEDGED" : failureUnknown ? "APPOINTMENT_SUBMISSION_UNKNOWN" : "APPOINTMENT_SUBMISSION_FAILED",
+        {
+          workItemId: latestItem.id,
+          operationId: latestItem.operationId,
+          status: latestItem.status,
+          providerStatus: effectiveResponse?.status ?? result.acknowledgement?.status ?? result.error?.code,
+          externalTransactionId: effectiveResponse?.externalTransactionId ?? result.acknowledgement?.externalTransactionId,
+        },
+        String(latestItem.id),
+        actor,
+        new Date(),
+        {
+          operationId: latestItem.operationId,
+          correlationId: latestItem.operationId,
+          status: latestItem.status,
+          source: (latestState.regulatoryTransport as Record<string, unknown> | undefined)?.provider ?? "Regulatory gateway",
+          mode: "live",
+          direction: result.accepted ? "response" : "error",
+          externalConfirmation,
+          entityLinks: { producerId: latestItem.producerId, agencyId: latestItem.brokerageId, workItemId: latestItem.id },
+        },
+      );
+      const latestParsed = stateInput.parse({ ...latestState, appointmentWorkItems: latestItems, appointmentOutbox: latestOutbox });
+      const finalState = canonicalState(latestParsed, resultAudit, latestPriorAudit, latestState, actor);
+      const finalized = await db.update(licensingStateTable).set({
+        state: finalState,
+        version: sql`${licensingStateTable.version} + 1`,
+        updatedAt: new Date(),
+        updatedBy: actor,
+      }).where(and(eq(licensingStateTable.id, 1), eq(licensingStateTable.version, latest.version))).returning();
+      if (!finalized[0]) {
+        // The durable claim prevents another submission. Return the latest
+        // canonical record and let a provider callback complete reconciliation.
+        return res.status(202).json(response(await currentState()));
+      }
+      return res.status(result.accepted ? 200 : 202).json({ ...response(finalized[0]), transport: result });
+    }
     if (input.action === "submit") {
-      item.status = "SUBMITTED_SIMULATED";
       const outboxId = `AO-${now.getTime()}-${Math.random().toString(36).slice(2, 7)}`;
       item.outboxId = outboxId;
-      outbox.unshift({ id: outboxId, workItemId: item.id, status: "SIMULATED_OUTBOX", createdAt: now.toISOString(), actor, payload: appointmentPayload(item, now) });
+      const payload = appointmentPayload(item, now);
+      item.status = "SUBMITTED_SIMULATED";
+      outbox.unshift({ id: outboxId, workItemId: item.id, status: "SIMULATED_OUTBOX", mode: "simulation", createdAt: now.toISOString(), actor, payload });
       ledger.unshift(
         { id: `AL-${now.getTime()}-fee`, workItemId: item.id, policyOrQuote: item.policyOrQuote, producerId: item.producerId, state: item.state, type: "STATE_FEE", status: "PENDING", amount: typeof item.fee === "number" ? item.fee : null, currency: typeof item.fee === "number" ? "USD" : null, description: "Recorded state appointment fee pending reviewed resolution.", createdAt: now.toISOString(), actor },
         { id: `AL-${now.getTime()}-commission`, workItemId: item.id, policyOrQuote: item.policyOrQuote, producerId: item.producerId, state: item.state, type: "COMMISSION", status: "HELD", amount: null, currency: null, description: "Commission hold recorded pending appointment review.", createdAt: now.toISOString(), actor },
@@ -866,17 +1080,24 @@ router.post("/licensing/appointment-work-items/:id/transition", async (req, res,
     const history = Array.isArray(item.history) ? item.history : [];
     item.history = [{ at: now.toISOString(), actor, action: input.action.toUpperCase(), reason: input.reason, from: beforeStatus, to: item.status }, ...history];
     const priorAudit = Array.isArray(currentStateValue.auditLogs) ? currentStateValue.auditLogs as unknown[] : [];
-    const audit = appointmentAudit(`APPOINTMENT_${input.action.toUpperCase()}`, { workItemId: item.id, from: beforeStatus, to: item.status, reason: input.reason, operationId: item.operationId }, String(item.id), actor, now, {
+    const audit = appointmentAudit(`APPOINTMENT_${input.action.toUpperCase()}`, {
+      workItemId: item.id,
+      from: beforeStatus,
+      to: item.status,
+      reason: input.reason,
+      operationId: item.operationId,
+      transportStatus: input.action === "submit" ? transportStatus : undefined,
+    }, String(item.id), actor, now, {
       operationId: item.operationId,
       correlationId: item.correlationId ?? item.operationId,
       status: item.status,
-      source: input.action === "submit" ? "Simulated outbox" : "Operator-reviewed appointment workflow",
-      mode: "simulation",
+      source: input.action === "submit" ? transportProvider : "Operator-reviewed appointment workflow",
+      mode: input.action === "submit" && liveMode ? "live" : "simulation",
       direction: input.action === "submit" ? "request" : "internal",
       entityLinks: { producerId: item.producerId, agencyId: item.brokerageId, workItemId: item.id },
     });
     const parsed = stateInput.parse({ ...currentStateValue, appointmentWorkItems: workItems, appointmentOutbox: outbox, appointmentLedger: ledger });
-    const nextState = canonicalState(parsed, audit, priorAudit);
+    const nextState = canonicalState(parsed, audit, priorAudit, currentStateValue, actor);
     const updated = await db.update(licensingStateTable).set({
       state: nextState,
       version: sql`${licensingStateTable.version} + 1`,
@@ -891,33 +1112,210 @@ router.post("/licensing/appointment-work-items/:id/transition", async (req, res,
   }
 });
 
+async function regulatoryReadiness(): Promise<RegulatoryTransportHealth> {
+  return createRegulatoryGatewayAdapter().readiness();
+}
+
+function providerCallbackAuthorized(req: import("express").Request): "authorized" | "missing" | "invalid" {
+  const expected = process.env.REGULATORY_GATEWAY_WEBHOOK_SECRET?.trim() ?? "";
+  if (!expected) return "missing";
+  const authorization = req.header("authorization") ?? "";
+  const supplied = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
+  if (!supplied) return "invalid";
+  const expectedDigest = createHash("sha256").update(expected).digest();
+  const suppliedDigest = createHash("sha256").update(supplied).digest();
+  return timingSafeEqual(expectedDigest, suppliedDigest) ? "authorized" : "invalid";
+}
+
+regulatoryCallbackRouter.post("/licensing/transport/callback", async (req, res, next) => {
+  try {
+    const authorization = providerCallbackAuthorized(req);
+    if (authorization === "missing") {
+      return res.status(503).json({ error: "Regulatory callback authorization is not configured." });
+    }
+    if (authorization === "invalid") {
+      return res.status(401).json({ error: "Regulatory callback authorization failed." });
+    }
+    const input = transportCallbackInput.parse(req.body);
+    const current = await currentState();
+    const currentStateValue = current.state as CanonicalState;
+    const workItems = Array.isArray(currentStateValue.appointmentWorkItems)
+      ? (currentStateValue.appointmentWorkItems as Record<string, unknown>[]).map((item) => ({ ...item }))
+      : [];
+    const item = workItems.find((entry) => String(entry.operationId) === input.operationId);
+    if (!item) return res.status(404).json({ error: "Regulatory operation was not found." });
+    if (!["SENDING_LIVE", "SUBMITTED_LIVE", "SUBMISSION_UNKNOWN", "CONFIRMED_EXTERNAL"].includes(String(item.status))) {
+      return res.status(409).json({ error: "Regulatory operation is not awaiting an external response." });
+    }
+    const outbox = Array.isArray(currentStateValue.appointmentOutbox)
+      ? (currentStateValue.appointmentOutbox as Record<string, unknown>[]).map((entry) => ({ ...entry }))
+      : [];
+    const outboxEntry = outbox.find((entry) => String(entry.operationId) === input.operationId);
+    const priorResponse = (item.transport as Record<string, unknown> | undefined)?.asynchronousResponse as Record<string, unknown> | undefined;
+    const lastProviderSequence = Number(outboxEntry?.lastProviderSequence ?? -1);
+    const alreadyConfirmed = item.status === "CONFIRMED_EXTERNAL" || priorResponse?.externalConfirmation === true;
+    if (alreadyConfirmed && !input.externalConfirmation) {
+      return res.json({ accepted: true, duplicate: false, stale: true, operationId: input.operationId });
+    }
+    if (input.sequence <= lastProviderSequence) {
+      return res.json({ accepted: true, duplicate: true, stale: true, operationId: input.operationId });
+    }
+    if (
+      String(item.status) === (input.externalConfirmation ? "CONFIRMED_EXTERNAL" : "SUBMITTED_LIVE")
+      && String(priorResponse?.status ?? "") === input.status
+      && String(priorResponse?.externalTransactionId ?? "") === String(input.externalTransactionId ?? "")
+    ) {
+      return res.json({ accepted: true, duplicate: true, operationId: input.operationId });
+    }
+    const receivedAt = new Date().toISOString();
+    const asynchronousResponse = {
+      eventId: input.eventId,
+      sequence: input.sequence,
+      status: input.status,
+      receivedAt,
+      occurredAt: input.occurredAt ?? null,
+      externalConfirmation: input.externalConfirmation,
+      externalTransactionId: input.externalTransactionId ?? null,
+    };
+    const priorStatus = String(item.status);
+    item.status = input.externalConfirmation ? "CONFIRMED_EXTERNAL" : "SUBMITTED_LIVE";
+    item.updatedAt = receivedAt;
+    item.transport = {
+      ...((item.transport && typeof item.transport === "object") ? item.transport as Record<string, unknown> : {}),
+      asynchronousResponse,
+    };
+    item.history = [{
+      at: receivedAt,
+      actor: "regulatory-provider",
+      action: input.externalConfirmation ? "EXTERNAL_CONFIRMED" : "EXTERNAL_RESPONSE",
+      reason: input.status,
+      from: priorStatus,
+      to: item.status,
+    }, ...(Array.isArray(item.history) ? item.history : [])];
+    if (outboxEntry) {
+      outboxEntry.status = item.status;
+      outboxEntry.updatedAt = receivedAt;
+      outboxEntry.asynchronousResponse = asynchronousResponse;
+      outboxEntry.lastProviderSequence = Math.max(lastProviderSequence, input.sequence);
+      outboxEntry.lastProviderEventId = input.eventId;
+    }
+    const priorAudit = Array.isArray(currentStateValue.auditLogs) ? currentStateValue.auditLogs as unknown[] : [];
+    const audit = appointmentAudit(
+      input.externalConfirmation ? "APPOINTMENT_EXTERNAL_CONFIRMED" : "APPOINTMENT_EXTERNAL_RESPONSE",
+      {
+        workItemId: item.id,
+        operationId: input.operationId,
+        providerStatus: input.status,
+        providerEventId: input.eventId,
+        providerSequence: input.sequence,
+        externalTransactionId: input.externalTransactionId ?? null,
+      },
+      String(item.id),
+      "regulatory-provider",
+      new Date(),
+      {
+        operationId: input.operationId,
+        correlationId: input.operationId,
+        status: item.status,
+        source: (currentStateValue.regulatoryTransport as Record<string, unknown> | undefined)?.provider ?? "Regulatory gateway callback",
+        mode: "live",
+        direction: "response",
+        externalConfirmation: input.externalConfirmation,
+        entityLinks: { producerId: item.producerId, agencyId: item.brokerageId, workItemId: item.id },
+      },
+    );
+    const parsed = stateInput.parse({ ...currentStateValue, appointmentWorkItems: workItems, appointmentOutbox: outbox });
+    const nextState = canonicalState(parsed, audit, priorAudit, currentStateValue, "regulatory-provider");
+    const updated = await db.update(licensingStateTable).set({
+      state: nextState,
+      version: sql`${licensingStateTable.version} + 1`,
+      updatedAt: new Date(),
+      updatedBy: "regulatory-provider",
+    }).where(and(eq(licensingStateTable.id, 1), eq(licensingStateTable.version, current.version))).returning();
+    if (!updated[0]) return res.status(409).json({ error: "Regulatory operation changed during reconciliation. Retry the callback." });
+    return res.json({ accepted: true, duplicate: false, operationId: input.operationId });
+  } catch (error) {
+    if (error instanceof z.ZodError) return res.status(400).json({ error: "Invalid regulatory callback.", issues: error.issues });
+    return next(error);
+  }
+});
+
 /**
- * Provider-neutral transport boundary. A live adapter can implement these
- * contracts later without changing producer/agency screens or audit semantics.
+ * Provider-neutral transport boundary. The configured HTTPS gateway is
+ * server-owned, so credentials and readiness assertions never reach the
+ * browser or the persisted client-editable state.
  */
 router.get("/licensing/transport/readiness", async (_req, res, next) => {
   try {
-    res.json({
-      mode: "simulation",
-      provider: null,
-      capability: "appointment-submission",
-      configured: false,
-      authorized: false,
-      healthy: false,
-      ready: false,
-      status: "NOT_CONFIGURED",
-      missing: ["provider", "supported capability", "authorization", "healthy connection"],
-      contracts: {
-        request: "RegulatoryTransportRequest",
-        acknowledgement: "RegulatoryTransportAcknowledgement",
-        asynchronousResponse: "RegulatoryTransportResponse",
-        error: "RegulatoryTransportError",
-        retry: "RegulatoryTransportRetry",
-        health: "RegulatoryTransportHealth",
-      },
-    });
+    res.json(await regulatoryReadiness());
   } catch (error) {
     next(error);
+  }
+});
+
+router.post("/licensing/transport/mode", async (req, res, next) => {
+  try {
+    const input = transportModeInput.parse(req.body);
+    const current = await currentState();
+    if (current.version !== input.version) {
+      return res.status(409).json({ error: "Licensing state was updated by another user.", current: response(current) });
+    }
+    const currentStateValue = current.state as CanonicalState;
+    const readiness = await regulatoryReadiness();
+    if (input.mode === "live" && !readiness.liveActivationAllowed) {
+      return res.status(503).json({
+        accepted: false,
+        mode: "simulation",
+        status: "BLOCKED_NOT_READY",
+        error: readiness.ready
+          ? "Live regulatory transport is blocked until sandbox certification evidence is reviewed."
+          : "Live regulatory transport is not configured or verified.",
+        readiness,
+      });
+    }
+
+    const now = new Date();
+    const actor = req.userId ?? "unknown";
+    const nextTransport = {
+      ...readiness,
+      mode: input.mode,
+      ready: input.mode === "live" && readiness.liveActivationAllowed,
+    };
+    const managedState = {
+      ...currentStateValue,
+      licensingMode: input.mode,
+      regulatoryTransport: nextTransport,
+    };
+    const priorAudit = Array.isArray(currentStateValue.auditLogs) ? currentStateValue.auditLogs as unknown[] : [];
+    const audit = appointmentAudit("LICENSING_MODE_CHANGED", {
+      from: currentStateValue.licensingMode ?? "simulation",
+      to: input.mode,
+      provider: readiness.provider,
+      readiness: readiness.status,
+    }, "regulatory-transport", actor, now, {
+      operationId: `MODE-${input.mode.toUpperCase()}-${now.getTime()}`,
+      status: "Completed",
+      source: readiness.provider ?? "Regulatory transport control",
+      mode: input.mode,
+      direction: "internal",
+      provider: readiness.provider,
+      readiness: readiness.status,
+    });
+    const parsed = stateInput.parse(currentStateValue);
+    const nextState = canonicalState(parsed, audit, priorAudit, managedState, actor);
+    const updated = await db.update(licensingStateTable).set({
+      state: nextState,
+      version: sql`${licensingStateTable.version} + 1`,
+      updatedAt: now,
+      updatedBy: actor,
+    }).where(and(eq(licensingStateTable.id, 1), eq(licensingStateTable.version, input.version))).returning();
+    if (!updated[0]) {
+      return res.status(409).json({ error: "Licensing state was updated by another user.", current: response(await currentState()) });
+    }
+    return res.json({ ...response(updated[0]), readiness: nextTransport });
+  } catch (error) {
+    if (error instanceof z.ZodError) return res.status(400).json({ error: "Invalid regulatory operating mode.", issues: error.issues });
+    return next(error);
   }
 });
 
@@ -925,13 +1323,12 @@ router.post("/licensing/transport/submit", async (req, res, next) => {
   try {
     const input = transportSubmitInput.parse(req.body);
     if (input.mode === "live") {
-      return res.status(503).json({
+      return res.status(403).json({
         accepted: false,
         mode: "live",
-        status: "BLOCKED_NOT_READY",
-        error: "Live regulatory transport is not configured or verified.",
-        readiness: { ready: false, missing: ["provider", "supported capability", "authorization", "healthy connection"] },
         operationId: input.operationId,
+        status: "WORK_ITEM_REQUIRED",
+        error: "Live regulatory requests must use a server-validated appointment work item.",
       });
     }
     const now = new Date().toISOString();

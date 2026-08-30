@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { classifyRepositoryConnection } from "../src/routes/health";
+import {
+  classifyRepositoryConnection,
+  classifyRepositoryHistory,
+} from "../src/routes/health";
 
 const verifiedRepository = {
   full_name: "ahpoladminsys-sudo/AH-PAS",
@@ -32,4 +35,26 @@ test("rejects private, read-only, wrong-branch, or mismatched repositories", () 
 test("distinguishes an inaccessible repository from provider unavailability", () => {
   assert.equal(classifyRepositoryConnection(404, null).status, "not_connected");
   assert.equal(classifyRepositoryConnection(503, null).status, "unavailable");
+});
+
+test("uses commit history when repository size metadata is stale", () => {
+  const connection = classifyRepositoryConnection(200, verifiedRepository);
+  const result = classifyRepositoryHistory(
+    connection,
+    200,
+    [{ sha: "published-commit" }],
+  );
+  assert.equal(result.historyStatus, "available");
+});
+
+test("distinguishes an empty repository from unavailable history verification", () => {
+  const connection = classifyRepositoryConnection(200, verifiedRepository);
+  assert.equal(
+    classifyRepositoryHistory(connection, 409, null).historyStatus,
+    "empty",
+  );
+  assert.equal(
+    classifyRepositoryHistory(connection, 503, null).historyStatus,
+    "unknown",
+  );
 });

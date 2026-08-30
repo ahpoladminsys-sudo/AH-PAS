@@ -46,13 +46,28 @@ async function repositoryConnectionStatus(): Promise<{
   message: string;
 }> {
   try {
-    const response = await new ReplitConnectors().proxy(
+    const connectors = new ReplitConnectors();
+    const response = await connectors.proxy(
       "github",
       `/repos/${GITHUB_REPOSITORY}`,
       { method: "GET" },
     );
     const repository = response.ok ? await response.json() : null;
-    return classifyRepositoryConnection(response.status, repository);
+    const connection = classifyRepositoryConnection(response.status, repository);
+    if (connection.status !== "connected" || connection.historyStatus === "available") {
+      return connection;
+    }
+    try {
+      const commitsResponse = await connectors.proxy(
+        "github",
+        `/repos/${GITHUB_REPOSITORY}/commits?sha=${GITHUB_DEFAULT_BRANCH}&per_page=1`,
+        { method: "GET" },
+      );
+      const commits = commitsResponse.ok ? await commitsResponse.json() : null;
+      return classifyRepositoryHistory(connection, commitsResponse.status, commits);
+    } catch {
+      return classifyRepositoryHistory(connection, 503, null);
+    }
   } catch {
     return {
       repository: GITHUB_REPOSITORY,
@@ -61,6 +76,41 @@ async function repositoryConnectionStatus(): Promise<{
         "GitHub repository verification is temporarily unavailable. Refresh the protected status or reconnect source control.",
     };
   }
+}
+
+export function classifyRepositoryHistory(
+  connection: Awaited<ReturnType<typeof repositoryConnectionStatus>>,
+  httpStatus: number,
+  commits: unknown,
+): Awaited<ReturnType<typeof repositoryConnectionStatus>> {
+  if (connection.status !== "connected") return connection;
+  if (
+    httpStatus >= 200
+    && httpStatus < 300
+    && Array.isArray(commits)
+    && commits.length > 0
+  ) {
+    return {
+      ...connection,
+      historyStatus: "available",
+      message:
+        "The approved GitHub connection can access this repository. Its default branch is main.",
+    };
+  }
+  if (httpStatus === 409) {
+    return {
+      ...connection,
+      historyStatus: "empty",
+      message:
+        "The approved GitHub connection can access this repository. Its default branch is main; the repository has no initial commit history yet.",
+    };
+  }
+  return {
+    ...connection,
+    historyStatus: "unknown",
+    message:
+      "The approved GitHub connection can access this repository, but commit history verification is temporarily unavailable.",
+  };
 }
 
 export function classifyRepositoryConnection(

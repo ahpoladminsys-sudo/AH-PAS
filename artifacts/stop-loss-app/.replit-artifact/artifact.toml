@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/stop-loss-app/"
+title = "Stop Loss Quote & Policy Workspace"
+description = "A Stop Loss underwriting workspace for managing quotes, policies, opportunities, enrollment, claims, compliance, and synchronized Google Sheets records."
+version = "1.0.0"
+id = "artifacts/stop-loss-app"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/stop-loss-app/" ]
+localPort = 20305
+
+[services.development]
+run = "pnpm --filter @workspace/stop-loss-app run dev"
+
+[services.development.health.startup]
+path = "/healthz"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/stop-loss-app", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/stop-loss-app/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20305"
+BASE_PATH = "/stop-loss-app/"

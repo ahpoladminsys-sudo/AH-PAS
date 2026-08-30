@@ -1,0 +1,29 @@
+import { useState } from 'react';
+import { ArrowUpRight, FileText, Plus, Search, ShieldCheck, X } from 'lucide-react';
+import { PageHeader, SectionCard, StatusPill } from '@/components/workspace-shell';
+
+const policyRows = [
+  { id: 'SL-24-0187', account: 'Atlas Fabrication', effective: 'Jan 01, 2025', renewal: 'Jan 01, 2026', premium: '$284,600', claims: '$148,230', status: 'Issued' },
+  { id: 'SL-24-0162', account: 'Lumen Dental', effective: 'Dec 01, 2024', renewal: 'Dec 01, 2025', premium: '$192,400', claims: '$68,210', status: 'Issued' },
+  { id: 'SL-24-0141', account: 'Northline Foods', effective: 'Oct 01, 2024', renewal: 'Oct 01, 2025', premium: '$328,900', claims: '$214,882', status: 'Review' },
+  { id: 'SL-24-0098', account: 'Morrow Utilities', effective: 'Jul 01, 2024', renewal: 'Jul 01, 2025', premium: '$161,700', claims: '$47,010', status: 'Issued' },
+];
+
+export default function Policies() {
+  const [query, setQuery] = useState('');
+  const [selected, setSelected] = useState<typeof policyRows[number] | null>(null);
+  const [detailNotice, setDetailNotice] = useState('');
+  const filtered = policyRows.filter((row) => `${row.id} ${row.account}`.toLowerCase().includes(query.toLowerCase()));
+  return <div className="content">
+    <PageHeader eyebrow="Policy book · 2025" title={<>Policies with the <em>full picture.</em></>} subtitle="Issued coverage, renewal timing, and claims context in one dependable register." actions={<button className="btn btn-primary" onClick={() => setSelected(policyRows[0])} data-testid="button-new-policy"><Plus size={14} /> New policy</button>} />
+    <div className="grid grid-kpis"><div className="metric"><div className="metric-label">Active policies</div><div className="metric-value mono">28</div><div className="metric-note">4 renewing this quarter</div></div><div className="metric"><div className="metric-label">In-force premium</div><div className="metric-value mono">$4.72m</div><div className="metric-note">+8.4% year over year</div></div><div className="metric"><div className="metric-label">Paid claims</div><div className="metric-value mono">$2.08m</div><div className="metric-note">44.1% of premium</div></div><div className="metric"><div className="metric-label">Open reviews</div><div className="metric-value mono">03</div><div className="metric-note">Needs underwriting eyes</div></div></div>
+    <SectionCard title="Active policy register" description="Issued and in-review policies across the book" action={<div className="search"><Search size={14} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search policy or account" data-testid="input-policy-search" /></div>}>
+      <div className="table-wrap"><table><thead><tr><th>Policy</th><th>Account</th><th>Effective</th><th>Renewal</th><th>Premium</th><th>Claims incurred</th><th>Status</th><th /></tr></thead><tbody>{filtered.map((row, index) => <tr key={row.id} data-testid={`row-policy-${row.id}`}><td className="strong mono">{row.id}</td><td>{row.account}</td><td>{row.effective}</td><td>{row.renewal}</td><td className="mono">{row.premium}</td><td className="mono">{row.claims}</td><td><StatusPill tone={row.status === 'Issued' ? 'good' : 'warn'}>{row.status}</StatusPill></td><td><button className="btn btn-quiet" onClick={() => setSelected(row)} data-testid={`button-view-policy-${index}`}><ArrowUpRight size={14} /></button></td></tr>)}</tbody></table></div>
+    </SectionCard>
+    {selected && <div className="card" style={{ marginTop: 20 }}><div className="card-head"><div><div className="card-title">{selected.id} · {selected.account}</div><div className="card-desc">Policy detail view</div></div><button className="btn btn-quiet" onClick={() => setSelected(null)} data-testid="button-close-policy-detail"><X size={16} /></button></div><div className="card-body"><div className="tabs"><button className="tab active" data-testid="tab-policy-overview">Overview</button><button className="tab" onClick={() => setDetailNotice('Documents are ready for review.')} data-testid="tab-policy-documents">Documents</button><button className="tab" onClick={() => setDetailNotice('Claims ledger selected.')} data-testid="tab-policy-claims">Claims</button></div><div className="detail-grid"><div className="detail-cell"><span className="detail-label">Status</span><span className="detail-value"><StatusPill tone={selected.status === 'Issued' ? 'good' : 'warn'}>{selected.status}</StatusPill></span></div><div className="detail-cell"><span className="detail-label">Effective date</span><span className="detail-value">{selected.effective}</span></div><div className="detail-cell"><span className="detail-label">Renewal</span><span className="detail-value">{selected.renewal}</span></div><div className="detail-cell"><span className="detail-label">Annual premium</span><span className="detail-value mono">{selected.premium}</span></div><div className="detail-cell"><span className="detail-label">Claims incurred</span><span className="detail-value mono">{selected.claims}</span></div><div className="detail-cell"><span className="detail-label">Loss ratio</span><span className="detail-value mono">52.1%</span></div></div>{detailNotice && <div className="callout" style={{ marginTop: 14 }} data-testid="status-policy-detail"><CheckIcon /><span>{detailNotice}</span></div>}<div className="actions" style={{ marginTop: 15 }}><button className="btn btn-teal" onClick={() => setDetailNotice('Documents are ready for review.')} data-testid="button-open-policy-documents"><FileText size={14} /> View documents</button><button className="btn btn-outline" onClick={() => setDetailNotice(`CRM profile opened for ${selected.account}.`)} data-testid="button-open-policy-account"><ShieldCheck size={14} /> Account profile</button></div></div></div>}
+  </div>;
+}
+
+function CheckIcon() {
+  return <ShieldCheck size={16} />;
+}

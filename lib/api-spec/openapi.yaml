@@ -1,0 +1,1943 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: sheets
+    description: Google Sheets synchronization
+  - name: drive
+    description: Google Drive document storage and workbook handoff
+  - name: gemini
+    description: Stateless Gemini document extraction
+  - name: licensing
+    description: Server-authoritative brokerage and agent authority validation
+  - name: library
+    description: Project artifact and output library
+paths:
+  /auth/status:
+    get:
+      operationId: getAuthorizationStatus
+      tags: [health]
+      summary: Read redacted workspace authorization configuration status
+      description: Returns only whether the server-side authorized-user configuration is valid. Never returns the configured addresses or credentials.
+      responses:
+        "200":
+          description: Redacted authorization configuration state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthorizationStatus"
+  /auth/access-status:
+    get:
+      operationId: getApplicationAccessStatus
+      tags: [health]
+      summary: Read redacted application, provider, authorization, and repository states
+      description: Returns only classifications and operator guidance. Never returns user identifiers, provider responses, credentials, cookies, or OAuth tokens.
+      responses:
+        "200":
+          description: Redacted application-access state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplicationAccessStatus"
+  /auth/portable/start:
+    post:
+      operationId: startPortableSession
+      tags: [health]
+      summary: Start a short-lived handoff for a downloaded standalone workspace
+      description: Returns a one-time nonce and hosted sign-in URL. No credentials are returned.
+      responses:
+        "200":
+          description: Portable handoff started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortableSessionStart"
+  /auth/portable/authorize:
+    get:
+      operationId: authorizePortableSession
+      tags: [health]
+      summary: Hosted sign-in page for a portable workspace handoff
+      parameters:
+        - name: nonce
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Hosted sign-in or handoff completion page
+          content:
+            text/html:
+              schema:
+                type: string
+        "400":
+          description: Expired or invalid handoff
+  /auth/portable/exchange:
+    post:
+      operationId: exchangePortableSession
+      tags: [health]
+      summary: Exchange an authenticated hosted session for a short-lived portable session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PortableSessionExchangeInput"
+      responses:
+        "200":
+          description: Short-lived portable session token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortableSessionExchange"
+        "401":
+          description: Hosted user session is not authenticated
+        "409":
+          description: Handoff has expired or was already used
+  /licensing/validate:
+    post:
+      operationId: validateLicensingAuthority
+      tags: [licensing]
+      summary: Validate brokerage and agent authority for a policyholder state
+      description: Requires an authenticated browser session and uses the server-owned licensing seed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LicensingAuthorityInput"
+      responses:
+        "200":
+          description: License authority is active; appointment status may be returned as a non-blocking advisory
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LicensingValidationResponse"
+        "400":
+          description: Malformed or incomplete validation request
+        "401":
+          description: Unauthenticated
+        "422":
+          description: Brokerage or agent authority is unavailable for this state or date
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /library/catalog:
+    get:
+      operationId: getLibraryCatalog
+      tags: [library]
+      summary: Discover project artifacts and library records
+      description: Publicly discovers registered local artifacts and their verified standalone build metadata. Cloud records remain available through the protected enrichment endpoint.
+      responses:
+        "200":
+          description: Local project library catalog with source status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryCatalog"
+  /library/catalog/enrichment:
+    get:
+      operationId: getLibraryCatalogEnrichment
+      tags: [library]
+      summary: Read protected Sheets and Drive library enrichment
+      description: Requires an authenticated browser session. Reads the Project Library Sheets tab and live Drive metadata without changing local artifact discovery.
+      responses:
+        "200":
+          description: Protected cloud enrichment with independent source states
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryCatalogEnrichment"
+        "401":
+          description: Unauthenticated
+        "403":
+          description: Authenticated user is not authorized for the workspace
+  /library/artifacts/{slug}/rebuild:
+    post:
+      operationId: rebuildLibraryArtifact
+      tags: [library]
+      summary: Rebuild an approved standalone artifact
+      description: Requires an authenticated browser session. Rebuilds only registered artifacts with an approved production command, validates one-file integrity, and atomically hands off the output.
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Validated standalone build metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryArtifactBuild"
+        "401":
+          description: Unauthenticated
+        "403":
+          description: Authenticated user is not authorized for the workspace
+        "404":
+          description: Artifact is not registered or cannot be rebuilt
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: A rebuild could not safely complete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Generated output failed standalone integrity validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /library/artifacts/{slug}/export:
+    get:
+      operationId: downloadLibraryArtifactExport
+      tags: [library]
+      summary: Download the generated standalone HTML for a project artifact
+      description: Requires an authenticated browser session and returns the current generated one-file HTML when the artifact has a production build.
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Generated standalone HTML export
+          content:
+            text/html:
+              schema:
+                type: string
+        "404":
+          description: Artifact or generated export was not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: The source is newer than the generated export or the export failed integrity validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthenticated
+  /sheets/status:
+    get:
+      operationId: getSheetsStatus
+      tags: [sheets]
+      summary: Get Google Sheets synchronization status
+      responses:
+        "200":
+          description: Current Google Sheets connection and sync status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SheetsStatus"
+  /sheets/snapshot:
+    get:
+      operationId: getSheetsSnapshot
+      tags: [sheets]
+      summary: Retrieve the application snapshot from Google Sheets
+      responses:
+        "200":
+          description: Snapshot data organized by worksheet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SheetsSnapshot"
+        "409":
+          description: Google Sheets is not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /sheets/configure:
+    post:
+      operationId: configureSheets
+      tags: [sheets]
+      summary: Configure the target Google Sheets workbook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SheetsConfigInput"
+      responses:
+        "200":
+          description: Saved Google Sheets configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SheetsStatus"
+  /sheets/initialize:
+    post:
+      operationId: initializeSheets
+      tags: [sheets]
+      summary: Create or initialize the application workbook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SheetsInitializeInput"
+      responses:
+        "200":
+          description: Initialized Google Sheets workbook
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SheetsStatus"
+        "409":
+          description: Google Sheets write access is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /sheets/sync:
+    post:
+      operationId: syncSheets
+      tags: [sheets]
+      summary: Push application data to Google Sheets
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SheetsSyncInput"
+      responses:
+        "200":
+          description: Sync result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SheetsSyncResult"
+        "409":
+          description: Google Sheets write access is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /drive/status:
+    get:
+      operationId: getDriveStatus
+      tags: [drive]
+      summary: Get Google Drive document storage status
+      responses:
+        "200":
+          description: Current Google Drive storage status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DriveStatus"
+  /drive/documents:
+    get:
+      operationId: getDriveDocuments
+      tags: [drive]
+      summary: List non-folder files available in Google Drive
+      responses:
+        "200":
+          description: Available Google Drive files
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DriveDocumentList"
+    post:
+      operationId: uploadDriveDocument
+      tags: [drive]
+      summary: Save an uploaded or generated document to Google Drive
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DriveDocumentInput"
+      responses:
+        "200":
+          description: Saved Drive document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DriveDocument"
+  /drive/index-workbooks:
+    get:
+      operationId: getDriveIndexWorkbooks
+      tags: [drive]
+      summary: List Index workbooks available in Google Drive
+      responses:
+        "200":
+          description: Index workbooks resolved from the authorized Drive library
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DriveDocumentList"
+  /drive/duplicates/preview:
+    post:
+      operationId: previewDriveDuplicates
+      tags: [drive]
+      summary: Preview same-name duplicates in the managed System Folder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DriveDuplicatePreviewInput"
+      responses:
+        "200":
+          description: Dry-run duplicate cleanup preview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DriveDuplicatePreview"
+  /drive/duplicates/execute:
+    post:
+      operationId: executeDriveDuplicates
+      tags: [drive]
+      summary: Trash explicitly approved older duplicate files
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DriveDuplicateExecuteInput"
+      responses:
+        "200":
+          description: Duplicate cleanup results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DriveDuplicateResult"
+        "400":
+          description: Approval or cleanup input is invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Cleanup preview expired or file metadata changed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /drive/enrollment-workbook:
+    post:
+      operationId: saveDriveEnrollmentWorkbook
+      tags: [drive]
+      summary: Create or update the single enrollment history workbook for a policy
+      description: Saves a policy's durable Excel census history without creating a new workbook when an existing file ID is supplied.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DriveEnrollmentWorkbookInput"
+      responses:
+        "200":
+          description: Enrollment history workbook metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DriveEnrollmentWorkbook"
+        "400":
+          description: Invalid workbook input
+        "409":
+          description: The enrollment workbook changed after it was loaded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /drive/documents/{documentId}/content:
+    get:
+      operationId: getDriveDocumentContent
+      tags: [drive]
+      summary: Read a Google Drive file for preview or download
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Base64-encoded Google Drive file content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DriveDocumentContent"
+    put:
+      operationId: updateDriveDocumentContent
+      tags: [drive]
+      summary: Replace the content of an existing Google Drive file
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DriveDocumentContentUpdate"
+      responses:
+        "200":
+          description: Updated Drive document metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DriveDocument"
+        "400":
+          description: Invalid file ID or content
+  /drive/documents/{documentId}/share:
+    post:
+      operationId: shareDriveDocument
+      tags: [drive]
+      summary: Explicitly share an existing Drive file
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DriveShareInput"
+      responses:
+        "200":
+          description: Explicit sharing result
+        "400":
+          description: Invalid file ID or recipient
+  /drive/workspace-state:
+    get:
+      operationId: getDriveWorkspaceState
+      tags: [drive]
+      summary: Retrieve the deterministic durable workspace-state file from Google Drive
+      responses:
+        "200":
+          description: Durable workspace state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DriveWorkspaceState"
+        "404":
+          description: No managed workspace-state file exists yet
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: saveDriveWorkspaceState
+      tags: [drive]
+      summary: Create or update the deterministic durable workspace-state file
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DriveWorkspaceStateInput"
+      responses:
+        "200":
+          description: Updated durable workspace state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DriveWorkspaceState"
+        "409":
+          description: The managed file changed since the client last read it
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /drive/migrations/preview:
+    post:
+      operationId: previewDriveMigration
+      tags: [drive]
+      summary: Preview existing Drive files that can be organized into policy folders
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DriveMigrationPreviewInput"
+      responses:
+        "200":
+          description: Dry-run migration preview; no Drive files are changed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DriveMigrationPreview"
+  /drive/migrations/execute:
+    post:
+      operationId: executeDriveMigration
+      tags: [drive]
+      summary: Apply explicitly approved Drive policy-folder moves
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DriveMigrationExecuteInput"
+      responses:
+        "200":
+          description: Migration results with before and after folder references
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DriveMigrationResult"
+        "400":
+          description: Approval or migration input is invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /drive/transfer-sheet:
+    post:
+      operationId: transferSheetToDrive
+      tags: [drive]
+      summary: Share the active Google Sheets workbook with a destination account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SheetTransferInput"
+      responses:
+        "200":
+          description: Workbook sharing result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SheetTransferResult"
+  /gemini/extract:
+    post:
+      operationId: extractGeminiDocument
+      tags: [gemini]
+      summary: Extract allowed values from an uploaded document with Gemini
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GeminiDocumentExtractionInput"
+      responses:
+        "200":
+          description: Document extraction result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeminiDocumentExtractionResult"
+        "400":
+          description: Invalid extraction request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Document exceeds the 8 MB inline-data limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /gemini/repair-summary:
+    post:
+      operationId: generateGeminiRepairSummary
+      tags: [gemini]
+      summary: Generate bounded advisory guidance for a failed system event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GeminiRepairSummaryInput"
+      responses:
+        "200":
+          description: Advisory troubleshooting guidance grounded in the event snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeminiRepairSummaryResult"
+        "400":
+          description: Invalid repair-summary request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Repair-summary rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: AI provider did not return usable guidance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+    PortableSessionStart:
+      type: object
+      required: [authorizeUrl, nonce, expiresAt, sessionTtlSeconds]
+      properties:
+        authorizeUrl:
+          type: string
+          pattern: "^https?://"
+        nonce:
+          type: string
+        expiresAt:
+          type: number
+        sessionTtlSeconds:
+          type: number
+    PortableSessionExchangeInput:
+      type: object
+      required: [nonce]
+      properties:
+        nonce:
+          type: string
+          minLength: 1
+    PortableSessionExchange:
+      type: object
+      required: [portableSession, expiresAt]
+      properties:
+        portableSession:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+    LibraryArtifact:
+      type: object
+      required: [id, slug, kind, title, description, route, artifactPath, serviceNames, productionConfigured, build]
+      properties:
+        id:
+          type: string
+        slug:
+          type: string
+        kind:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        route:
+          type: string
+        artifactPath:
+          type: string
+        serviceNames:
+          type: array
+          items:
+            type: string
+        productionConfigured:
+          type: boolean
+        build:
+          $ref: "#/components/schemas/LibraryArtifactBuild"
+    LibraryArtifactBuild:
+      type: object
+      required: [state, message]
+      properties:
+        state:
+          type: string
+          enum: [current, stale, unavailable]
+        message:
+          type: string
+        builtAt:
+          type: ["string", "null"]
+          format: date-time
+        sourceModifiedAt:
+          type: ["string", "null"]
+          format: date-time
+        size:
+          type: ["string", "null"]
+        downloadUrl:
+          type: ["string", "null"]
+    LibraryRecord:
+      type: object
+      required: [id, title, type, status, description, artifactSlug, artifactUrl, tags, updatedAt, driveFileId, driveWebViewLink]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        type:
+          type: string
+        status:
+          type: string
+        description:
+          type: string
+        artifactSlug:
+          type: ["string", "null"]
+        artifactUrl:
+          type: ["string", "null"]
+        tags:
+          type: array
+          items:
+            type: string
+        updatedAt:
+          type: ["string", "null"]
+        driveFileId:
+          type: ["string", "null"]
+        driveWebViewLink:
+          type: ["string", "null"]
+    LibrarySourceStatus:
+      type: object
+      required: [state, message]
+      properties:
+        state:
+          type: string
+          enum: [connected, read_only, unavailable, local]
+        message:
+          type: string
+    LibraryDriveFile:
+      type: object
+      required: [id, name, mimeType, webViewLink, size, modifiedTime, parentIds]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        mimeType:
+          type: string
+        webViewLink:
+          type: string
+        size:
+          type: ["string", "null"]
+        modifiedTime:
+          type: ["string", "null"]
+        parentIds:
+          type: array
+          items:
+            type: string
+    LibraryCatalog:
+      type: object
+      required: [artifacts, records, driveFiles, sources, generatedAt]
+      properties:
+        artifacts:
+          type: array
+          items:
+            $ref: "#/components/schemas/LibraryArtifact"
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/LibraryRecord"
+        driveFiles:
+          type: array
+          items:
+            $ref: "#/components/schemas/LibraryDriveFile"
+        sources:
+          type: object
+          required: [sheets, drive]
+          properties:
+            sheets:
+              $ref: "#/components/schemas/LibrarySourceStatus"
+            drive:
+              $ref: "#/components/schemas/LibrarySourceStatus"
+        generatedAt:
+          type: string
+          format: date-time
+    LibraryCatalogEnrichment:
+      type: object
+      required: [records, driveFiles, sources]
+      properties:
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/LibraryRecord"
+        driveFiles:
+          type: array
+          items:
+            $ref: "#/components/schemas/LibraryDriveFile"
+        sources:
+          type: object
+          required: [sheets, drive]
+          properties:
+            sheets:
+              $ref: "#/components/schemas/LibrarySourceStatus"
+            drive:
+              $ref: "#/components/schemas/LibrarySourceStatus"
+    LicensingAuthorityInput:
+      type: object
+      required: [brokerageName, agentName, state, effectiveDate]
+      properties:
+        brokerageName:
+          type: string
+        agentName:
+          type: string
+        state:
+          type: string
+          pattern: "^[A-Z]{2}$"
+        effectiveDate:
+          type: string
+          format: date
+        brokerageId:
+          type: string
+        agentId:
+          type: string
+        appointmentStatus:
+          type: string
+        lineOfAuthority:
+          type: string
+    LicensingValidationResponse:
+      type: object
+      required: [valid, hardBlock, code, reasonCode, reasons, advisory, evidence]
+      properties:
+        valid:
+          type: boolean
+        hardBlock:
+          type: boolean
+        code:
+          type: string
+        reasonCode:
+          type: string
+        error:
+          type: string
+        reasons:
+          type: array
+          items:
+            $ref: "#/components/schemas/LicensingValidationReason"
+        advisory:
+          type: array
+          items:
+            $ref: "#/components/schemas/LicensingValidationReason"
+        appointment:
+          $ref: "#/components/schemas/AHAppointmentRule"
+        evidence:
+          type: object
+          additionalProperties: true
+    LicensingValidationReason:
+      type: object
+      required: [code, message, severity]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        severity:
+          type: string
+          enum: [error, warning]
+    AHLicensingRule:
+      type: object
+      required: [id, state, licenseType, lineOfAuthority, requiredParty, sourceVersion, sourceFile, sourceEffectiveDate]
+      properties:
+        id: { type: string }
+        state: { type: string }
+        licenseType: { type: string }
+        lineOfAuthority: { type: string }
+        requiredParty: { type: string }
+        sourceVersion: { type: string }
+        sourceFile: { type: string }
+        sourceEffectiveDate: { type: string, format: date }
+    AHAppointmentRule:
+      type: object
+      required: [id, state, ruleType, requiredParty, sourceVersion, sourceFile, sourceEffectiveDate]
+      properties:
+        id: { type: string }
+        state: { type: string }
+        ruleType:
+          type: string
+          enum: [pre-appointment, jit, register-only, not-required]
+        requiredParty: { type: string }
+        filingWindowDays:
+          type: [number, "null"]
+        fee:
+          type: [number, "null"]
+        sourceVersion: { type: string }
+        sourceFile: { type: string }
+        sourceEffectiveDate: { type: string, format: date }
+    JsonValue:
+      nullable: true
+      oneOf:
+        - type: string
+        - type: number
+        - type: boolean
+        - type: object
+          additionalProperties: true
+        - type: array
+          items: {}
+    SheetRow:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/JsonValue"
+    SheetTab:
+      type: object
+      required: [name, rows]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/SheetRow"
+    SheetsStatus:
+      type: object
+      required: [configured, writable, connection, accessState, lastSyncedAt, spreadsheetId, spreadsheetUrl]
+      properties:
+        configured:
+          type: boolean
+        writable:
+          type: boolean
+        connection:
+          type: string
+        accessState:
+          type: string
+          enum: [connected, not_configured, provider_error]
+        errorCode:
+          type: ["string", "null"]
+        message:
+          type: string
+        lastSyncedAt:
+          type: ["string", "null"]
+        spreadsheetId:
+          type: ["string", "null"]
+        spreadsheetUrl:
+          type: ["string", "null"]
+    SheetsSnapshot:
+      type: object
+      required: [status, tabs, revision]
+      properties:
+        status:
+          $ref: "#/components/schemas/SheetsStatus"
+        tabs:
+          type: array
+          items:
+            $ref: "#/components/schemas/SheetTab"
+        revision:
+          type: string
+          minLength: 1
+        canonicalIndex:
+          type: object
+          additionalProperties: true
+    SheetsConfigInput:
+      type: object
+      properties:
+        spreadsheetId:
+          type: string
+          minLength: 10
+        spreadsheetUrl:
+          type: string
+        title:
+          type: string
+          minLength: 1
+      anyOf:
+        - required: [spreadsheetId]
+        - required: [spreadsheetUrl]
+    SheetsInitializeInput:
+      type: object
+      required: [title, tabs]
+      properties:
+        title:
+          type: string
+          minLength: 1
+        spreadsheetId:
+          type: string
+          minLength: 10
+        tabs:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/SheetTab"
+    SheetsSyncInput:
+      type: object
+      required: [tabs, expectedRevision]
+      properties:
+        tabs:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/SheetTab"
+        expectedRevision:
+          type: string
+          minLength: 1
+    SheetsSyncResult:
+      type: object
+      required: [status, updatedTabs, updatedRows, revision]
+      properties:
+        status:
+          $ref: "#/components/schemas/SheetsStatus"
+        updatedTabs:
+          type: number
+        updatedRows:
+          type: number
+        revision:
+          type: string
+          minLength: 1
+        canonicalIndex:
+          type: object
+          additionalProperties: true
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+        category:
+          type: string
+        recoverable:
+          type: boolean
+    AuthorizationStatus:
+      type: object
+      required: [configured, valid, status, source, message]
+      properties:
+        configured:
+          type: boolean
+        valid:
+          type: boolean
+        status:
+          type: string
+          enum: [configured, missing, invalid]
+        source:
+          type: string
+          enum: [AUTHORIZED_USER_EMAILS]
+        message:
+          type: string
+    ApplicationSessionStatus:
+      type: object
+      required: [status, mode, message]
+      properties:
+        status:
+          type: string
+          enum: [connected, required, expired, invalid]
+        mode:
+          type: string
+          enum: [hosted, portable]
+        message:
+          type: string
+    ApplicationIdentityProviderStatus:
+      type: object
+      required: [status, message]
+      properties:
+        status:
+          type: string
+          enum: [github, other, unknown, unavailable]
+        message:
+          type: string
+    ApplicationAuthorizationStatus:
+      type: object
+      required: [status, message]
+      properties:
+        status:
+          type: string
+          enum: [authorized, required, denied, unavailable, not_configured]
+        code:
+          type: string
+        message:
+          type: string
+    GithubRepositoryStatus:
+      type: object
+      required: [repository, status, message]
+      properties:
+        repository:
+          type: string
+          enum: [ahpoladminsys-sudo/AH-PAS]
+        status:
+          type: string
+          enum: [connected, not_connected, unavailable]
+        defaultBranch:
+          type: string
+        historyStatus:
+          type: string
+          enum: [available, empty, unknown]
+        message:
+          type: string
+    ApplicationAccess:
+      type: object
+      required: [session, identityProvider, authorization, repository]
+      properties:
+        session:
+          $ref: "#/components/schemas/ApplicationSessionStatus"
+        identityProvider:
+          $ref: "#/components/schemas/ApplicationIdentityProviderStatus"
+        authorization:
+          $ref: "#/components/schemas/ApplicationAuthorizationStatus"
+        repository:
+          $ref: "#/components/schemas/GithubRepositoryStatus"
+    ApplicationAccessStatus:
+      type: object
+      required: [authorization, application]
+      properties:
+        authorization:
+          $ref: "#/components/schemas/AuthorizationStatus"
+        application:
+          $ref: "#/components/schemas/ApplicationAccess"
+    DriveStatus:
+      type: object
+      required: [configured, accessState, connection, destinationEmail]
+      properties:
+        configured:
+          type: boolean
+        connection:
+          type: string
+        accessState:
+          type: string
+          enum: [connected, provider_error]
+        destinationEmail:
+          type: ["string", "null"]
+        message:
+          type: string
+    DriveDocumentInput:
+      type: object
+      required: [name, mimeType, contentBase64]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        mimeType:
+          type: string
+          minLength: 1
+        contentBase64:
+          type: string
+          minLength: 1
+        systemOwned:
+          type: boolean
+        folderId:
+          type: string
+        folderPath:
+          type: array
+          maxItems: 4
+          items:
+            type: string
+            minLength: 1
+        shareWithEmail:
+          type: string
+        operationId:
+          type: string
+          minLength: 1
+    DriveDocument:
+      type: object
+      required: [id, name, mimeType, webViewLink]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        mimeType:
+          type: string
+        webViewLink:
+          type: string
+        sharedWithEmail:
+          type: ["string", "null"]
+        folderId:
+          type: string
+        folderPath:
+          type: array
+          items:
+            type: string
+        size:
+          type: string
+        modifiedTime:
+          type: string
+        parentIds:
+          type: array
+          items:
+            type: string
+        parentPath:
+          type: array
+          items:
+            type: string
+        sourceId:
+          type: string
+        verifiedAugust:
+          type: boolean
+        excluded:
+          type: boolean
+        exclusionReason:
+          type: string
+        canonicalRank:
+          type: number
+    DriveDocumentList:
+      type: object
+      required: [files]
+      properties:
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/DriveDocument"
+    DriveDocumentContent:
+      type: object
+      required: [id, name, mimeType, contentBase64, webViewLink]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        mimeType:
+          type: string
+        contentBase64:
+          type: string
+        webViewLink:
+          type: string
+        modifiedTime:
+          type: string
+    DriveDocumentContentUpdate:
+      type: object
+      required: [contentBase64]
+      properties:
+        contentBase64:
+          type: string
+          minLength: 1
+        expectedModifiedTime:
+          type: string
+          minLength: 1
+    DriveEnrollmentWorkbookInput:
+      type: object
+      additionalProperties: false
+      required: [name, mimeType, contentBase64, policyId, folderPath, uploadId, reportMonth, lastChangedAt, changeDescription]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        mimeType:
+          type: string
+          minLength: 1
+        contentBase64:
+          type: string
+          minLength: 1
+        policyId:
+          type: string
+          minLength: 1
+        folderPath:
+          type: array
+          minItems: 1
+          maxItems: 4
+          items:
+            type: string
+            minLength: 1
+        workbookFileId:
+          type: string
+        expectedModifiedTime:
+          type: string
+          minLength: 1
+        uploadId:
+          type: string
+          minLength: 1
+        reportMonth:
+          type: string
+          pattern: "^20\\d{2}-((0[1-9])|(1[0-2]))$"
+        lastChangedAt:
+          type: string
+          minLength: 1
+        changeDescription:
+          type: string
+          minLength: 1
+    DriveEnrollmentWorkbook:
+      type: object
+      required: [id, name, mimeType, webViewLink, folderPath, uploadId, reportMonth, lastChangedAt, changeDescription, action]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        mimeType:
+          type: string
+        webViewLink:
+          type: string
+        modifiedTime:
+          type: string
+        folderId:
+          type: string
+        folderPath:
+          type: array
+          items:
+            type: string
+        uploadId:
+          type: string
+        reportMonth:
+          type: string
+        lastChangedAt:
+          type: string
+        changeDescription:
+          type: string
+        action:
+          type: string
+          enum: [created, updated]
+    DriveShareInput:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          pattern: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+        role:
+          type: string
+          enum: [writer, owner]
+    WorkspaceStateData:
+      type: object
+      additionalProperties: true
+      required: [schemaVersion, updatedAt, source, systemLog, pendingReview, sheetsCache, licensingFallback]
+      properties:
+        schemaVersion:
+          type: number
+        updatedAt:
+          type: string
+          format: date-time
+        source:
+          type: string
+        systemLog:
+          type: object
+          additionalProperties: true
+        pendingReview:
+          type: ["object", "null"]
+          additionalProperties: true
+        sheetsCache:
+          type: ["object", "null"]
+          additionalProperties: true
+        licensingFallback:
+          type: ["object", "null"]
+          additionalProperties: true
+        canonicalIndex:
+          type: ["object", "null"]
+          additionalProperties: true
+        activeIndexSource:
+          type: ["object", "null"]
+          additionalProperties: true
+    DriveWorkspaceStateInput:
+      type: object
+      additionalProperties: false
+      required: [state]
+      properties:
+        state:
+          $ref: "#/components/schemas/WorkspaceStateData"
+        expectedModifiedTime:
+          type: ["string", "null"]
+          format: date-time
+    DriveWorkspaceState:
+      type: object
+      required: [fileId, name, mimeType, modifiedTime, state]
+      properties:
+        fileId:
+          type: string
+        name:
+          type: string
+        mimeType:
+          type: string
+        modifiedTime:
+          type: string
+          format: date-time
+        folderId:
+          type: string
+        folderPath:
+          type: array
+          items:
+            type: string
+        parentIds:
+          type: array
+          items:
+            type: string
+        movedToSystemFolder:
+          type: boolean
+        operationId:
+          type: string
+        decidedAt:
+          type: string
+          format: date-time
+        state:
+          $ref: "#/components/schemas/WorkspaceStateData"
+    DriveMigrationPolicy:
+      type: object
+      required: [id, name, effectiveYear]
+      properties:
+        id:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          minLength: 1
+        effectiveYear:
+          type: string
+          pattern: "^20\\d{2}$"
+        documentFileIds:
+          type: array
+          maxItems: 100
+          items:
+            type: string
+            minLength: 1
+    DriveMigrationPreviewInput:
+      type: object
+      required: [policies]
+      properties:
+        policies:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/DriveMigrationPolicy"
+    DriveMigrationPreviewItem:
+      type: object
+      required: [sourceFileId, sourceName, sourceModifiedTime, decision, reason, sourceParentIds, sourcePath, destinationPath]
+      properties:
+        sourceFileId:
+          type: string
+        sourceName:
+          type: string
+        sourceMimeType:
+          type: string
+        sourceWebViewLink:
+          type: string
+        sourceModifiedTime:
+          type: ["string", "null"]
+          format: date-time
+        decision:
+          type: string
+          enum: [proposed, ambiguous, already_in_destination]
+        reason:
+          type: string
+        policyId:
+          type: ["string", "null"]
+        category:
+          type: ["string", "null"]
+        sourceParentIds:
+          type: array
+          items:
+            type: string
+        sourcePath:
+          type: array
+          items:
+            type: string
+        destinationFolderId:
+          type: ["string", "null"]
+        destinationPath:
+          type: array
+          items:
+            type: string
+    DriveMigrationPreview:
+      type: object
+      required: [previewId, operationId, generatedAt, files, proposedCount, ambiguousCount, alreadyInDestinationCount]
+      properties:
+        previewId:
+          type: string
+        operationId:
+          type: string
+        generatedAt:
+          type: string
+          format: date-time
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/DriveMigrationPreviewItem"
+        proposedCount:
+          type: number
+        ambiguousCount:
+          type: number
+        alreadyInDestinationCount:
+          type: number
+    DriveMigrationMove:
+      type: object
+      required: [sourceFileId, destinationPath, expectedSourceParentIds]
+      properties:
+        sourceFileId:
+          type: string
+          minLength: 1
+        destinationPath:
+          type: array
+          minItems: 3
+          maxItems: 4
+          items:
+            type: string
+            minLength: 1
+        destinationFolderId:
+          type: string
+        expectedSourceParentIds:
+          type: array
+          items:
+            type: string
+    DriveMigrationExecuteInput:
+      type: object
+      required: [approved, previewId, moves]
+      properties:
+        approved:
+          type: boolean
+        previewId:
+          type: string
+          minLength: 1
+        moves:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/DriveMigrationMove"
+    DriveMigrationResultItem:
+      type: object
+      required: [operationId, decidedAt, sourceFileId, sourceName, status, destinationFolderId, destinationPath, beforeParentIds, beforePath, afterParentIds, afterPath]
+      properties:
+        sourceFileId:
+          type: string
+        operationId:
+          type: string
+        decidedAt:
+          type: string
+          format: date-time
+        sourceName:
+          type: string
+        status:
+          type: string
+          enum: [moved, already_in_destination, conflict, failed]
+        message:
+          type: string
+        destinationFolderId:
+          type: ["string", "null"]
+        destinationPath:
+          type: array
+          items:
+            type: string
+        beforeParentIds:
+          type: array
+          items:
+            type: string
+        beforePath:
+          type: array
+          items:
+            type: string
+        afterParentIds:
+          type: array
+          items:
+            type: string
+        afterPath:
+          type: array
+          items:
+            type: string
+    DriveMigrationResult:
+      type: object
+      required: [approved, previewId, operationId, decidedAt, movedCount, alreadyInDestinationCount, conflictCount, failedCount, results]
+      properties:
+        approved:
+          type: boolean
+        previewId:
+          type: string
+        operationId:
+          type: string
+        decidedAt:
+          type: string
+          format: date-time
+        movedCount:
+          type: number
+        alreadyInDestinationCount:
+          type: number
+        conflictCount:
+          type: number
+        failedCount:
+          type: number
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/DriveMigrationResultItem"
+    DriveDuplicatePreviewInput:
+      type: object
+      additionalProperties: false
+      properties:
+        folderId:
+          type: string
+          minLength: 1
+    DriveDuplicatePreviewItem:
+      type: object
+      required: [fileId, fileName, modifiedTime, parentFolderId, parentPath, decision, retainedFileId, reason]
+      properties:
+        fileId:
+          type: string
+        fileName:
+          type: string
+        modifiedTime:
+          type: string
+        parentFolderId:
+          type: string
+        parentPath:
+          type: array
+          items:
+            type: string
+        decision:
+          type: string
+          enum: [retain, trash_candidate, metadata_uncertain]
+        retainedFileId:
+          type: string
+        reason:
+          type: string
+    DriveDuplicatePreview:
+      type: object
+      required: [previewId, operationId, generatedAt, folderId, folderPath, files, candidateCount, groupCount]
+      properties:
+        previewId:
+          type: string
+        operationId:
+          type: string
+        generatedAt:
+          type: string
+          format: date-time
+        folderId:
+          type: string
+        folderPath:
+          type: array
+          items:
+            type: string
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/DriveDuplicatePreviewItem"
+        candidateCount:
+          type: number
+        groupCount:
+          type: number
+    DriveDuplicateExecuteInput:
+      type: object
+      additionalProperties: false
+      required: [approved, previewId, fileIds]
+      properties:
+        approved:
+          type: boolean
+        previewId:
+          type: string
+          minLength: 1
+        fileIds:
+          type: array
+          maxItems: 100
+          items:
+            type: string
+            minLength: 1
+    DriveDuplicateResultItem:
+      type: object
+      required: [operationId, fileId, fileName, status, parentFolderId, parentPath, retainedFileId, reason, decidedAt]
+      properties:
+        fileId:
+          type: string
+        operationId:
+          type: string
+        fileName:
+          type: string
+        status:
+          type: string
+          enum: [trashed, already_trashed, conflict, failed]
+        parentFolderId:
+          type: string
+        parentPath:
+          type: array
+          items:
+            type: string
+        retainedFileId:
+          type: string
+        reason:
+          type: string
+        decidedAt:
+          type: string
+          format: date-time
+    DriveDuplicateResult:
+      type: object
+      required: [approved, previewId, operationId, decidedAt, trashedCount, conflictCount, failedCount, results]
+      properties:
+        approved:
+          type: boolean
+        previewId:
+          type: string
+        operationId:
+          type: string
+        decidedAt:
+          type: string
+          format: date-time
+        trashedCount:
+          type: number
+        conflictCount:
+          type: number
+        failedCount:
+          type: number
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/DriveDuplicateResultItem"
+    SheetTransferInput:
+      type: object
+      required: [spreadsheetId, destinationEmail]
+      properties:
+        spreadsheetId:
+          type: string
+          minLength: 10
+        destinationEmail:
+          type: string
+          minLength: 3
+        role:
+          type: string
+          enum: [writer, owner]
+    SheetTransferResult:
+      type: object
+      required: [spreadsheetId, destinationEmail, role, message]
+      properties:
+        spreadsheetId:
+          type: string
+        destinationEmail:
+          type: string
+        role:
+          type: string
+        message:
+          type: string
+    GeminiDocumentExtractionInput:
+      type: object
+      additionalProperties: false
+      required: [contentBase64, mimeType, steps, destination, allowedFields]
+      properties:
+        contentBase64:
+          type: string
+          minLength: 4
+          maxLength: 11184812
+        mimeType:
+          type: string
+          minLength: 1
+          maxLength: 255
+          pattern: "^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*$"
+        steps:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            type: string
+            minLength: 1
+            maxLength: 2000
+        destination:
+          type: string
+          maxLength: 2000
+        allowedFields:
+          type: array
+          maxItems: 100
+          items:
+            type: string
+            minLength: 1
+            maxLength: 200
+        profileId:
+          type: string
+          maxLength: 200
+        profileVersion:
+          type: number
+          minimum: 1
+          multipleOf: 1
+        documentType:
+          type: string
+          maxLength: 200
+        examples:
+          type: string
+          maxLength: 4000
+    GeminiDocumentExtractionResult:
+      type: object
+      additionalProperties: false
+      required: [text, source, values]
+      properties:
+        text:
+          type: string
+        source:
+          type: string
+        values:
+          type: object
+          additionalProperties:
+            type: string
+    GeminiRepairSummaryEvent:
+      type: object
+      additionalProperties: false
+      required: [eventId, timestamp, category, action, status, detail, actorSource, metadata]
+      properties:
+        eventId:
+          type: string
+          minLength: 1
+          maxLength: 200
+        timestamp:
+          type: string
+          maxLength: 80
+        category:
+          type: string
+          maxLength: 100
+        action:
+          type: string
+          maxLength: 200
+        status:
+          type: string
+          maxLength: 80
+        detail:
+          type: string
+          maxLength: 2000
+        actorSource:
+          type: string
+          maxLength: 200
+        operationId:
+          type: string
+          maxLength: 200
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+            maxLength: 300
+          maxProperties: 12
+    GeminiRepairSummaryInput:
+      type: object
+      additionalProperties: false
+      required: [event]
+      properties:
+        event:
+          $ref: "#/components/schemas/GeminiRepairSummaryEvent"
+    GeminiRepairSummaryResult:
+      type: object
+      additionalProperties: false
+      required: [recordedEvidence, likelyCauses, repairActions, verificationSteps, advisory]
+      properties:
+        recordedEvidence:
+          type: array
+          minItems: 1
+          maxItems: 8
+          items:
+            type: string
+            minLength: 1
+            maxLength: 1000
+        likelyCauses:
+          type: array
+          minItems: 1
+          maxItems: 8
+          items:
+            type: string
+            minLength: 1
+            maxLength: 1000
+        repairActions:
+          type: array
+          minItems: 1
+          maxItems: 8
+          items:
+            type: string
+            minLength: 1
+            maxLength: 1000
+        verificationSteps:
+          type: array
+          minItems: 1
+          maxItems: 8
+          items:
+            type: string
+            minLength: 1
+            maxLength: 1000
+        advisory:
+          type: string
+          minLength: 1
+          maxLength: 500

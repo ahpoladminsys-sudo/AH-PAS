@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A&H PAS - NIPR Producer Appointment Engine & Workflows</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f7ff',
+                            100: '#e0effe',
+                            500: '#0284c7',
+                            600: '#0369a1',
+                            700: '#075985',
+                            900: '#0c4a6e',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .workflow-node { transition: all 0.3s ease; }
+        .workflow-node.active { ring: 2px; ring-color: #0284c7; transform: scale(1.02); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans min-h-screen flex flex-col">
+
+    <!-- Top Navigation Header -->
+    <header class="bg-slate-800 border-b border-slate-700 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="bg-brand-600 p-2 rounded-lg text-white">
+                    <i data-lucide="shield-check" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight">A&H Policy Administration System</h1>
+                    <p class="text-xs text-slate-400">NIPR Automated Appointments & Compliance Engine</p>
+                </div>
+            </div>
+            <div class="flex space-x-1 bg-slate-900 p-1 rounded-lg border border-slate-700">
+                <button onclick="switchTab('simulator')" id="btn-simulator" class="tab-btn px-4 py-1.5 text-xs font-semibold rounded-md transition-colors bg-brand-600 text-white">
+                    <i data-lucide="cpu" class="w-3.5 h-3.5 inline mr-1"></i> Workflow Simulator
+                </button>
+                <button onclick="switchTab('screens')" id="btn-screens" class="tab-btn px-4 py-1.5 text-xs font-semibold rounded-md transition-colors text-slate-400 hover:text-white">
+                    <i data-lucide="layout" class="w-3.5 h-3.5 inline mr-1"></i> PAS Screens & UI Mockups
+                </button>
+                <button onclick="switchTab('rules')" id="btn-rules" class="tab-btn px-4 py-1.5 text-xs font-semibold rounded-md transition-colors text-slate-400 hover:text-white">
+                    <i data-lucide="matrix" class="w-3.5 h-3.5 inline mr-1"></i> State & LOA Matrix
+                </button>
+                <button onclick="switchTab('audit')" id="btn-audit" class="tab-btn px-4 py-1.5 text-xs font-semibold rounded-md transition-colors text-slate-400 hover:text-white">
+                    <i data-lucide="receipt" class="w-3.5 h-3.5 inline mr-1"></i> Commission & Audit Ledger
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Body -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+
+        <!-- TAB 1: WORKFLOW SIMULATOR -->
+        <div id="tab-simulator" class="tab-content active space-y-6">
+            <!-- Controls Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Simulation Controls Panel -->
+                <div class="bg-slate-800 p-5 rounded-xl border border-slate-700 space-y-4">
+                    <div class="flex items-center justify-between border-b border-slate-700 pb-3">
+                        <h2 class="font-semibold text-sm uppercase tracking-wider text-brand-500 flex items-center gap-2">
+                            <i data-lucide="sliders" class="w-4 h-4"></i> Policy Issue Parameters
+                        </h2>
+                        <span class="text-xs bg-slate-700 px-2 py-0.5 rounded text-slate-300">Interactive Engine</span>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1">A&H Product Line</label>
+                        <select id="sim-product" onchange="runSimulation()" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-brand-500 outline-none">
+                            <option value="BTA">Business Travel Accident (BTA)</option>
+                            <option value="PA">Personal Accident (PA)</option>
+                            <option value="STOP_LOSS" selected>Group Stop Loss</option>
+                            <option value="CRITICAL_ILLNESS">Critical Illness (CI)</option>
+                            <option value="ADD">Accidental Death & Dismemberment (AD&D)</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1">Policy Issue State</label>
+                        <select id="sim-state" onchange="runSimulation()" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-brand-500 outline-none">
+                            <option value="PA">Pennsylvania (Non-JIT / Pre-Appt)</option>
+                            <option value="OH">Ohio (Non-JIT / Pre-Appt)</option>
+                            <option value="FL" selected>Florida (JIT - 45 Day Window)</option>
+                            <option value="NC">North Carolina (JIT - Stop Loss = Casualty LOA Exception)</option>
+                            <option value="CA">California (JIT - Agency Endorsement Mandate)</option>
+                            <option value="NY">New York (Non-JIT - Hybrid CI Dual LOA)</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1">Producer License & Appt Status</label>
+                        <select id="sim-producer-status" onchange="runSimulation()" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-brand-500 outline-none">
+                            <option value="ACTIVE_APPOINTED">Active License + Active Carrier Appt</option>
+                            <option value="ACTIVE_UNAPPOINTED" selected>Active License + Unappointed</option>
+                            <option value="UNLICENSED">Unlicensed / Expired LOA License</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-medium text-slate-400 mb-1">Application Date</label>
+                        <input type="date" id="sim-app-date" value="2026-08-15" onchange="runSimulation()" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-brand-500 outline-none text-slate-100">
+                    </div>
+
+                    <button onclick="runSimulation()" class="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-2 rounded-lg text-xs transition flex items-center justify-center gap-2">
+                        <i data-lucide="play" class="w-4 h-4"></i> Execute Compliance Interceptor
+                    </button>
+                </div>
+
+                <!-- Live Dynamic Workflow Trace -->
+                <div class="lg:col-span-2 bg-slate-800 p-5 rounded-xl border border-slate-700 flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between border-b border-slate-700 pb-3 mb-4">
+                            <h2 class="font-semibold text-sm uppercase tracking-wider text-brand-500 flex items-center gap-2">
+                                <i data-lucide="git-branch" class="w-4 h-4"></i> End-to-End Decision Flow Execution
+                            </h2>
+                            <span id="verdict-badge" class="px-2 py-1 rounded text-xs font-bold uppercase tracking-wide">
+                                --
+                            </span>
+                        </div>
+
+                        <!-- Step Nodes -->
+                        <div class="space-y-3" id="workflow-nodes">
+                            <div id="node-1" class="workflow-node bg-slate-900 p-3 rounded-lg border border-slate-700 flex items-start gap-3">
+                                <div class="p-1.5 rounded bg-slate-800 text-slate-400 mt-0.5"><i data-lucide="file-input" class="w-4 h-4"></i></div>
+                                <div>
+                                    <div class="text-xs font-bold text-slate-200">1. Context Resolution</div>
+                                    <div id="node-1-text" class="text-xs text-slate-400">Evaluating product mapping rules...</div>
+                                </div>
+                            </div>
+
+                            <div id="node-2" class="workflow-node bg-slate-900 p-3 rounded-lg border border-slate-700 flex items-start gap-3">
+                                <div class="p-1.5 rounded bg-slate-800 text-slate-400 mt-0.5"><i data-lucide="shield-search" class="w-4 h-4"></i></div>
+                                <div>
+                                    <div class="text-xs font-bold text-slate-200">2. NIPR PDB Licensing Verification</div>
+                                    <div id="node-2-text" class="text-xs text-slate-400">Checking active LOAs in state PDB record...</div>
+                                </div>
+                            </div>
+
+                            <div id="node-3" class="workflow-node bg-slate-900 p-3 rounded-lg border border-slate-700 flex items-start gap-3">
+                                <div class="p-1.5 rounded bg-slate-800 text-slate-400 mt-0.5"><i data-lucide="building-2" class="w-4 h-4"></i></div>
+                                <div>
+                                    <div class="text-xs font-bold text-slate-200">3. Carrier Appointment Check</div>
+                                    <div id="node-3-text" class="text-xs text-slate-400">Checking carrier CoCode appointment table...</div>
+                                </div>
+                            </div>
+
+                            <div id="node-4" class="workflow-node bg-slate-900 p-3 rounded-lg border border-slate-700 flex items-start gap-3">
+                                <div class="p-1.5 rounded bg-slate-800 text-slate-400 mt-0.5"><i data-lucide="scale" class="w-4 h-4"></i></div>
+                                <div>
+                                    <div class="text-xs font-bold text-slate-200">4. Statutory Rules Engine & Backdate Validation</div>
+                                    <div id="node-4-text" class="text-xs text-slate-400">Evaluating JIT permissions and statutory backdate limits...</div>
+                                </div>
+                            </div>
+
+                            <div id="node-5" class="workflow-node bg-slate-900 p-3 rounded-lg border border-slate-700 flex items-start gap-3">
+                                <div class="p-1.5 rounded bg-slate-800 text-slate-400 mt-0.5"><i data-lucide="zap" class="w-4 h-4"></i></div>
+                                <div>
+                                    <div class="text-xs font-bold text-slate-200">5. Final PAS Action & Outbox Gateway Payload</div>
+                                    <div id="node-5-text" class="text-xs text-slate-400">Executing bind decision and commission hold policy...</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- XML Outbox Preview -->
+                    <div class="mt-4 pt-4 border-t border-slate-700">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs font-mono text-slate-400">Generated Outbox NIPR EAR XML Payload:</span>
+                            <button onclick="copyPayload()" class="text-xs text-brand-500 hover:text-brand-400 font-semibold"><i data-lucide="copy" class="w-3 h-3 inline"></i> Copy Payload</button>
+                        </div>
+                        <pre id="payload-preview" class="bg-slate-950 p-3 rounded border border-slate-800 font-mono text-[11px] text-emerald-400 overflow-x-auto max-h-36">
+<!-- Payload will generate dynamically -->
+                        </pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 2: PAS SCREENS & UI MOCKUPS -->
+        <div id="tab-screens" class="tab-content space-y-6">
+            <!-- Screen Selector Sub-Nav -->
+            <div class="flex space-x-2 border-b border-slate-700 pb-3">
+                <button onclick="switchScreen('screen-interceptor')" id="btn-screen-interceptor" class="screen-sub-btn text-xs px-3 py-1.5 rounded-lg bg-slate-800 text-brand-500 font-bold border border-brand-500">
+                    Screen 1: Underwriting / Bind Interceptor Modal
+                </button>
+                <button onclick="switchScreen('screen-profile')" id="btn-screen-profile" class="screen-sub-btn text-xs px-3 py-1.5 rounded-lg bg-slate-900 text-slate-400 hover:text-white border border-slate-800">
+                    Screen 2: Producer NIPR Compliance Profile
+                </button>
+                <button onclick="switchScreen('screen-ops')" id="btn-screen-ops" class="screen-sub-btn text-xs px-3 py-1.5 rounded-lg bg-slate-900 text-slate-400 hover:text-white border border-slate-800">
+                    Screen 3: Licensing Ops Queue & Exception Manager
+                </button>
+            </div>
+
+            <!-- Screen 1: Policy Bind Interceptor Modal -->
+            <div id="screen-interceptor" class="screen-view block">
+                <div class="bg-slate-950 p-6 rounded-xl border border-slate-800 max-w-2xl mx-auto shadow-2xl relative">
+                    <div class="absolute top-4 right-4 text-slate-500 hover:text-slate-300"><i data-lucide="x" class="w-5 h-5"></i></div>
+                    
+                    <!-- Alert Status Banner -->
+                    <div class="bg-amber-950/60 border border-amber-600/50 p-4 rounded-lg flex items-start gap-3 mb-5">
+                        <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-500 shrink-0 mt-0.5"></i>
+                        <div>
+                            <h3 class="text-sm font-bold text-amber-400">Non-JIT Compliance Block: Carrier Appointment Required</h3>
+                            <p class="text-xs text-amber-200/80 mt-1">
+                                Policy bind halted for <span class="font-semibold text-white">POL-BTA-2026-9041</span>. Writing Producer <span class="font-semibold text-white">Jane Doe (NPN: 17493021)</span> is licensed in Pennsylvania (PA) but lacks an active carrier appointment with CoCode <span class="font-semibold text-white">60012</span>.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Policy Summary Details -->
+                    <div class="grid grid-cols-2 gap-4 bg-slate-900 p-4 rounded-lg border border-slate-800 text-xs mb-5">
+                        <div>
+                            <span class="text-slate-500 block">Product LOB:</span>
+                            <span class="font-medium text-slate-200">Business Travel Accident (BTA)</span>
+                        </div>
+                        <div>
+                            <span class="text-slate-500 block">Issue Jurisdiction:</span>
+                            <span class="font-medium text-slate-200">Pennsylvania (PA) - Non-JIT</span>
+                        </div>
+                        <div>
+                            <span class="text-slate-500 block">Required LOA:</span>
+                            <span class="font-medium text-slate-200">02 - Accident & Health</span>
+                        </div>
+                        <div>
+                            <span class="text-slate-500 block">Producer License Status:</span>
+                            <span class="font-medium text-emerald-400">ACTIVE (Exp: 2027-10-31)</span>
+                        </div>
+                    </div>
+
+                    <!-- Action Footers -->
+                    <div class="flex items-center justify-between border-t border-slate-800 pt-4">
+                        <div class="text-[11px] text-slate-500">
+                            Auto-submitting NIPR EAR request will incur state fee: <span class="text-slate-300 font-semibold">$60.00</span>
+                        </div>
+                        <div class="flex space-x-2">
+                            <button class="px-3 py-1.5 rounded text-xs bg-slate-800 text-slate-300 hover:bg-slate-700">Cancel Issuance</button>
+                            <button class="px-4 py-1.5 rounded text-xs bg-brand-600 text-white font-semibold hover:bg-brand-700 flex items-center gap-1.5">
+                                <i data-lucide="send" class="w-3.5 h-3.5"></i> Submit NIPR Appointment & Hold Policy
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Screen 2: Producer Compliance Profile -->
+            <div id="screen-profile" class="screen-view hidden">
+                <div class="bg-slate-800 rounded-xl border border-slate-700 p-6 space-y-6">
+                    <!-- Profile Header -->
+                    <div class="flex items-center justify-between border-b border-slate-700 pb-4">
+                        <div class="flex items-center space-x-4">
+                            <div class="w-12 h-12 rounded-full bg-brand-600 text-white flex items-center justify-center font-bold text-lg">
+                                JD
+                            </div>
+                            <div>
+                                <h2 class="text-base font-bold text-white flex items-center gap-2">
+                                    Jane Doe, CLU <span class="text-xs font-normal bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded-full">PDB Synced</span>
+                                </h2>
+                                <p class="text-xs text-slate-400">NPN: 17493021 | SSN: ***-**-6789 | Resident State: Illinois (IL)</p>
+                            </div>
+                        </div>
+                        <button class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-xs rounded-lg flex items-center gap-2">
+                            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Force NIPR PDB Refresh
+                        </button>
+                    </div>
+
+                    <!-- LOAs & Appointments Grid -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Licenses Table -->
+                        <div class="bg-slate-900 p-4 rounded-lg border border-slate-800">
+                            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-2">
+                                <i data-lucide="award" class="w-4 h-4 text-brand-500"></i> Active State LOAs (PDB Real-time)
+                            </h3>
+                            <table class="w-full text-left text-xs">
+                                <thead>
+                                    <tr class="text-slate-500 border-b border-slate-800">
+                                        <th class="pb-2">State</th>
+                                        <th class="pb-2">LOA Code / Name</th>
+                                        <th class="pb-2">Status</th>
+                                        <th class="pb-2">Expires</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-800/60">
+                                    <tr>
+                                        <td class="py-2 font-bold text-slate-200">FL</td>
+                                        <td class="py-2">02 - Accident & Health</td>
+                                        <td class="py-2 text-emerald-400">ACTIVE</td>
+                                        <td class="py-2 text-slate-400">2027-08-31</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="py-2 font-bold text-slate-200">PA</td>
+                                        <td class="py-2">02 - Accident & Health</td>
+                                        <td class="py-2 text-emerald-400">ACTIVE</td>
+                                        <td class="py-2 text-slate-400">2026-11-30</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="py-2 font-bold text-slate-200">NC</td>
+                                        <td class="py-2">03 - Casualty</td>
+                                        <td class="py-2 text-rose-400 font-semibold">LAPSED</td>
+                                        <td class="py-2 text-slate-500">2026-05-01</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Appointments Table -->
+                        <div class="bg-slate-900 p-4 rounded-lg border border-slate-800">
+                            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-2">
+                                <i data-lucide="building" class="w-4 h-4 text-brand-500"></i> Carrier Appointments (CoCode: 60012)
+                            </h3>
+                            <table class="w-full text-left text-xs">
+                                <thead>
+                                    <tr class="text-slate-500 border-b border-slate-800">
+                                        <th class="pb-2">State</th>
+                                        <th class="pb-2">LOA</th>
+                                        <th class="pb-2">Appt Status</th>
+                                        <th class="pb-2">Effective</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-800/60">
+                                    <tr>
+                                        <td class="py-2 font-bold text-slate-200">FL</td>
+                                        <td class="py-2">02 (A&H)</td>
+                                        <td class="py-2 text-emerald-400">ACTIVE</td>
+                                        <td class="py-2 text-slate-400">2026-08-15</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="py-2 font-bold text-slate-200">PA</td>
+                                        <td class="py-2">02 (A&H)</td>
+                                        <td class="py-2 text-amber-400 font-semibold">PENDING_NIPR</td>
+                                        <td class="py-2 text-slate-500">--</td>
+                                    </tr>
+                                    <tr>
+                                        <td class="py-2 font-bold text-slate-200">NC</td>
+                                        <td class="py-2">03 (Cas)</td>
+                                        <td class="py-2 text-rose-400">TERMINATED</td>
+                                        <td class="py-2 text-slate-500">2025-01-10</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Screen 3: Licensing Ops Queue -->
+            <div id="screen-ops" class="screen-view hidden">
+                <div class="bg-slate-800 rounded-xl border border-slate-700 p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-sm font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
+                            <i data-lucide="list-checks" class="w-4 h-4 text-brand-500"></i> Compliance Exceptions & Work Queue
+                        </h2>
+                        <span class="text-xs bg-rose-950 text-rose-400 border border-rose-800 px-2 py-0.5 rounded">3 Open Critical Exceptions</span>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-slate-900 text-slate-400 uppercase">
+                                <tr>
+                                    <th class="p-3">Task ID</th>
+                                    <th class="p-3">Producer / NPN</th>
+                                    <th class="p-3">Policy # / LOB</th>
+                                    <th class="p-3">State</th>
+                                    <th class="p-3">Exception Cause</th>
+                                    <th class="p-3">Commission Status</th>
+                                    <th class="p-3 text-right">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-700/60 text-slate-300">
+                                <tr>
+                                    <td class="p-3 font-mono text-slate-400">TSK-9902</td>
+                                    <td class="p-3 font-semibold text-white">Mark Vance (18992014)</td>
+                                    <td class="p-3">STOP_LOSS (POL-8821)</td>
+                                    <td class="p-3">FL</td>
+                                    <td class="p-3 text-amber-400">JIT Backdate Exceeded (>45 days)</td>
+                                    <td class="p-3"><span class="bg-amber-950 text-amber-400 px-2 py-0.5 rounded border border-amber-800">ESCROW_HELD</span></td>
+                                    <td class="p-3 text-right">
+                                        <button class="px-2 py-1 bg-brand-600 hover:bg-brand-700 text-white rounded text-[11px]">Override & File</button>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 font-mono text-slate-400">TSK-9905</td>
+                                    <td class="p-3 font-semibold text-white">Sarah Jenkins (15549022)</td>
+                                    <td class="p-3">STOP_LOSS (POL-7734)</td>
+                                    <td class="p-3">NC</td>
+                                    <td class="p-3 text-rose-400">Missing Casualty LOA (03)</td>
+                                    <td class="p-3"><span class="bg-rose-950 text-rose-400 px-2 py-0.5 rounded border border-rose-800">FORFEITED</span></td>
+                                    <td class="p-3 text-right">
+                                        <button class="px-2 py-1 bg-slate-700 hover:bg-slate-600 text-white rounded text-[11px]">View Profile</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 3: STATE & LOA MATRIX -->
+        <div id="tab-rules" class="tab-content space-y-6">
+            <div class="bg-slate-800 p-6 rounded-xl border border-slate-700">
+                <div class="flex items-center justify-between mb-4 border-b border-slate-700 pb-3">
+                    <div>
+                        <h2 class="text-sm font-bold uppercase tracking-wider text-slate-200">Statutory Product-to-LOA Cross-Reference Matrix</h2>
+                        <p class="text-xs text-slate-400 mt-0.5">Configured state appointing model classifications and statutory LOA requirements</p>
+                    </div>
+                    <span class="text-xs bg-brand-950 text-brand-400 border border-brand-800 px-2 py-1 rounded">50 States + DC Configured</span>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs">
+                        <thead class="bg-slate-900 text-slate-400 uppercase">
+                            <tr>
+                                <th class="p-3">State</th>
+                                <th class="p-3">Appointing Model</th>
+                                <th class="p-3">JIT Grace Window</th>
+                                <th class="p-3">BTA & PA LOA</th>
+                                <th class="p-3">Group Stop Loss LOA</th>
+                                <th class="p-3">Critical Illness LOA</th>
+                                <th class="p-3">State Specific Nuance</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-700/60 text-slate-300">
+                            <tr>
+                                <td class="p-3 font-bold text-white">PA</td>
+                                <td class="p-3"><span class="bg-rose-950 text-rose-400 border border-rose-800 px-2 py-0.5 rounded">Non-JIT (Pre-Appt)</span></td>
+                                <td class="p-3 text-slate-500">0 Days</td>
+                                <td class="p-3">02 (A&H)</td>
+                                <td class="p-3">02 (A&H)</td>
+                                <td class="p-3">02 (A&H)</td>
+                                <td class="p-3 text-slate-400">Hard lock before quote/bind. No backdating permitted.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-bold text-white">FL</td>
+                                <td class="p-3"><span class="bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded">Just-In-Time</span></td>
+                                <td class="p-3 font-semibold text-emerald-400">45 Days</td>
+                                <td class="p-3">02 (A&H)</td>
+                                <td class="p-3">02 (A&H)</td>
+                                <td class="p-3">02 (A&H)</td>
+                                <td class="p-3 text-slate-400">Generous JIT window. County appointment fee tracking required.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-bold text-white">NC</td>
+                                <td class="p-3"><span class="bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded">Just-In-Time</span></td>
+                                <td class="p-3 text-emerald-400">30 Days</td>
+                                <td class="p-3">02 (A&H)</td>
+                                <td class="p-3 text-amber-400 font-bold">03 (Casualty)</td>
+                                <td class="p-3">02 (A&H)</td>
+                                <td class="p-3 text-amber-300">Stop Loss statutory exception: Classified under Casualty.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-bold text-white">NY</td>
+                                <td class="p-3"><span class="bg-rose-950 text-rose-400 border border-rose-800 px-2 py-0.5 rounded">Non-JIT (Pre-Appt)</span></td>
+                                <td class="p-3 text-slate-500">0 Days</td>
+                                <td class="p-3">02 (A&H)</td>
+                                <td class="p-3">02 (A&H)</td>
+                                <td class="p-3 text-amber-400 font-bold">01 (Life) + 02 (A&H)</td>
+                                <td class="p-3 text-amber-300">Hybrid CI Acceleration Riders require dual LOA appointments.</td>
+                            </tr>
+                            <tr>
+                                <td class="p-3 font-bold text-white">CA</td>
+                                <td class="p-3"><span class="bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded">Just-In-Time</span></td>
+                                <td class="p-3 text-emerald-400">14 Days</td>
+                                <td class="p-3">02 (A&H)</td>
+                                <td class="p-3">02 (A&H)</td>
+                                <td class="p-3">02 (A&H)</td>
+                                <td class="p-3 text-slate-400">Agency Endorsement Mandate: Verifies agency + individual NPN link.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 4: COMMISSION & AUDIT LEDGER -->
+        <div id="tab-audit" class="tab-content space-y-6">
+            <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 space-y-6">
+                <!-- Ledger Balance Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="bg-slate-900 p-4 rounded-lg border border-slate-800">
+                        <span class="text-xs text-slate-400 block">Total Commission Escrowed (Pending JIT)</span>
+                        <span class="text-xl font-bold text-amber-400 mt-1 block">$14,250.00</span>
+                        <span class="text-[11px] text-slate-500">6 Active Policies Awaiting NIPR Approval</span>
+                    </div>
+                    <div class="bg-slate-900 p-4 rounded-lg border border-slate-800">
+                        <span class="text-xs text-slate-400 block">Statutory Commission Forfeitures</span>
+                        <span class="text-xl font-bold text-rose-400 mt-1 block">$2,100.00</span>
+                        <span class="text-[11px] text-slate-500">3 Lapsed / Unappointed Exceptions Retained</span>
+                    </div>
+                    <div class="bg-slate-900 p-4 rounded-lg border border-slate-800">
+                        <span class="text-xs text-slate-400 block">NIPR Fees Assessed (MTD)</span>
+                        <span class="text-xl font-bold text-brand-400 mt-1 block">$1,480.00</span>
+                        <span class="text-[11px] text-slate-500">22 Successful Appointments Filed</span>
+                    </div>
+                </div>
+
+                <!-- Financial Journal Entries Table -->
+                <div>
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300 mb-3">Double-Entry Financial Ledger Stream</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-slate-900 text-slate-400 uppercase">
+                                <tr>
+                                    <th class="p-3">Entry ID</th>
+                                    <th class="p-3">Policy ID</th>
+                                    <th class="p-3">NPN</th>
+                                    <th class="p-3">Account Debit/Credit</th>
+                                    <th class="p-3">Amount</th>
+                                    <th class="p-3">NIPR Ref TX</th>
+                                    <th class="p-3">Compliance State</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-700/60 font-mono text-slate-300">
+                                <tr>
+                                    <td class="p-3 text-slate-400">LEDG-99821</td>
+                                    <td class="p-3 text-white">POL-BTA-FL-881</td>
+                                    <td class="p-3">17493021</td>
+                                    <td class="p-3 text-amber-400">CR ESCROW_HELD_UNAPPT</td>
+                                    <td class="p-3 font-bold text-white">$1,200.00</td>
+                                    <td class="p-3 text-slate-400">TX-20260829-9981</td>
+                                    <td class="p-3"><span class="bg-amber-950 text-amber-400 px-2 py-0.5 rounded text-[10px]">PENDING_JIT</span></td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 text-slate-400">LEDG-99822</td>
+                                    <td class="p-3 text-white">POL-BTA-FL-881</td>
+                                    <td class="p-3">17493021</td>
+                                    <td class="p-3 text-emerald-400">DR ACCRUED_PAYABLES</td>
+                                    <td class="p-3 font-bold text-white">$1,200.00</td>
+                                    <td class="p-3 text-slate-400">NIPR-2026-0829-FL</td>
+                                    <td class="p-3"><span class="bg-emerald-950 text-emerald-400 px-2 py-0.5 rounded text-[10px]">APPROVED_RELEASED</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Inline JavaScript App Logic -->
+    <script>
+        // Initialize Lucide Icons
+        lucide.createIcons();
+
+        // Tab Switching Logic
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('bg-brand-600', 'text-white');
+                btn.classList.add('text-slate-400');
+            });
+
+            document.getElementById(`tab-${tabId}`).classList.add('active');
+            const activeBtn = document.getElementById(`btn-${tabId}`);
+            activeBtn.classList.add('bg-brand-600', 'text-white');
+            activeBtn.classList.remove('text-slate-400');
+        }
+
+        // Sub-Screen Switching Logic inside Mockups
+        function switchScreen(screenId) {
+            document.querySelectorAll('.screen-view').forEach(sc => sc.classList.add('hidden'));
+            document.querySelectorAll('.screen-sub-btn').forEach(btn => {
+                btn.classList.remove('bg-slate-800', 'text-brand-500', 'font-bold', 'border-brand-500');
+                btn.classList.add('bg-slate-900', 'text-slate-400', 'border-slate-800');
+            });
+
+            document.getElementById(screenId).classList.remove('hidden');
+            const activeBtn = document.getElementById(`btn-${screenId}`);
+            activeBtn.classList.add('bg-slate-800', 'text-brand-500', 'font-bold', 'border-brand-500');
+            activeBtn.classList.remove('bg-slate-900', 'text-slate-400');
+        }
+
+        // Simulation Execution Engine
+        function runSimulation() {
+            const product = document.getElementById('sim-product').value;
+            const state = document.getElementById('sim-state').value;
+            const producerStatus = document.getElementById('sim-producer-status').value;
+            const appDate = document.getElementById('sim-app-date').value;
+
+            const badge = document.getElementById('verdict-badge');
+            const preview = document.getElementById('payload-preview');
+
+            // Reset nodes
+            for (let i = 1; i <= 5; i++) {
+                const node = document.getElementById(`node-${i}`);
+                node.className = "workflow-node bg-slate-900 p-3 rounded-lg border border-slate-700 flex items-start gap-3";
+            }
+
+            // State/LOA Matrix Resolution logic
+            let requiredLoa = "02 (Accident & Health)";
+            let loaCode = "02";
+            let isJit = true;
+            let maxBackdate = 30;
+
+            if (state === "PA" || state === "OH" || state === "NY") {
+                isJit = false;
+                maxBackdate = 0;
+            } else if (state === "FL") {
+                maxBackdate = 45;
+            } else if (state === "CA") {
+                maxBackdate = 14;
+            }
+
+            // Product LOA Exceptions
+            if (product === "STOP_LOSS" && state === "NC") {
+                requiredLoa = "03 (Casualty - NC Exception)";
+                loaCode = "03";
+            } else if (product === "CRITICAL_ILLNESS" && state === "NY") {
+                requiredLoa = "01 (Life) + 02 (A&H) [NY Dual LOA]";
+                loaCode = "01,02";
+            }
+
+            // Update Node Texts
+            document.getElementById('node-1-text').innerText = `Product ${product} in ${state} resolved to Required LOA: ${requiredLoa}.`;
+            
+            if (producerStatus === "UNLICENSED") {
+                document.getElementById('node-2-text').innerHTML = `<span class="text-rose-400 font-semibold">FAIL:</span> Producer lacks active ${requiredLoa} license in ${state}.`;
+                document.getElementById('node-3-text').innerText = "Skipped due to licensing failure.";
+                document.getElementById('node-4-text').innerText = "Skipped.";
+                document.getElementById('node-5-text').innerText = "PAS Action: HARD LOCK ISSUANCE. Alert Licensing Ops.";
+                
+                badge.className = "px-2 py-1 rounded text-xs font-bold uppercase tracking-wide bg-rose-950 text-rose-400 border border-rose-800";
+                badge.innerText = "BLOCKED: UNLICENSED";
+                
+                preview.innerText = `<!-- NO NIPR SUBMISSION GENERATED -->\n<!-- Error: Producer NPN 17493021 holds no active license for LOA ${loaCode} in state ${state} -->`;
+                return;
+            }
+
+            document.getElementById('node-2-text').innerHTML = `<span class="text-emerald-400 font-semibold">PASS:</span> Verified active ${requiredLoa} license on NIPR PDB.`;
+
+            if (producerStatus === "ACTIVE_APPOINTED") {
+                document.getElementById('node-3-text').innerHTML = `<span class="text-emerald-400 font-semibold">PASS:</span> Active appointment exists for CoCode 60012 in ${state}.`;
+                document.getElementById('node-4-text').innerText = "Statutory appointment present. No JIT backdate required.";
+                document.getElementById('node-5-text').innerText = "PAS Action: BIND PERMITTED immediately. Commissions released to Payable AP.";
+
+                badge.className = "px-2 py-1 rounded text-xs font-bold uppercase tracking-wide bg-emerald-950 text-emerald-400 border border-emerald-800";
+                badge.innerText = "PASSED: ACTIVE APPOINTMENT";
+
+                preview.innerText = `<!-- NO NIPR TRANSACTION REQUIRED -->\n<!-- Producer already holds active carrier appointment in state ${state} -->`;
+                return;
+            }
+
+            // Case: ACTIVE_UNAPPOINTED
+            document.getElementById('node-3-text').innerHTML = `<span class="text-amber-400 font-semibold">UNAPPOINTED:</span> No carrier appointment on file for CoCode 60012.`;
+
+            if (!isJit) {
+                // Non-JIT State
+                document.getElementById('node-4-text').innerHTML = `<span class="text-rose-400 font-semibold">NON-JIT STATE (${state}):</span> Pre-appointment mandatory. Cannot bind coverage prior to state DOI approval.`;
+                document.getElementById('node-5-text').innerText = "PAS Action: HOLD ISSUANCE. Queue NIPR Outbox EAR. Lock policy bind button.";
+
+                badge.className = "px-2 py-1 rounded text-xs font-bold uppercase tracking-wide bg-amber-950 text-amber-400 border border-amber-800";
+                badge.innerText = "HOLD: NON-JIT APPT REQUIRED";
+
+                preview.innerText = `<NIPRGatewayRequest xmlns="http://www.nipr.com/schemas/2026/EAR">
+    <Header>
+        <TransactionId>TX-PAS-${Date.now()}</TransactionId>
+        <CarrierCoCode>60012</CarrierCoCode>
+    </Header>
+    <AppointmentTransaction action="ADD">
+        <ProducerDetails><NPN>17493021</NPN></ProducerDetails>
+        <JurisdictionDetails>
+            <StateCode>${state}</StateCode>
+            <NaicLoaCode>${loaCode}</NaicLoaCode>
+            <RequestedEffectiveDate>${appDate}</RequestedEffectiveDate>
+        </JurisdictionDetails>
+        <JitContext><IsJitSubmission>false</IsJitSubmission></JitContext>
+    </AppointmentTransaction>
+</NIPRGatewayRequest>`;
+            } else {
+                // JIT State
+                document.getElementById('node-4-text').innerHTML = `<span class="text-emerald-400 font-semibold">JIT STATE (${state}):</span> Backdate grace window is ${maxBackdate} days. App date (${appDate}) within limit.`;
+                document.getElementById('node-5-text').innerText = "PAS Action: BIND PERMITTED. Queue NIPR Outbox JIT EAR. Transfer commissions to ESCROW_HELD_UNAPPT.";
+
+                badge.className = "px-2 py-1 rounded text-xs font-bold uppercase tracking-wide bg-emerald-950 text-emerald-400 border border-emerald-800";
+                badge.innerText = "PASSED: JIT BIND & FILED";
+
+                preview.innerText = `<NIPRGatewayRequest xmlns="http://www.nipr.com/schemas/2026/EAR">
+    <Header>
+        <TransactionId>TX-PAS-JIT-${Date.now()}</TransactionId>
+        <CarrierCoCode>60012</CarrierCoCode>
+    </Header>
+    <AppointmentTransaction action="ADD">
+        <ProducerDetails><NPN>17493021</NPN></ProducerDetails>
+        <JurisdictionDetails>
+            <StateCode>${state}</StateCode>
+            <NaicLoaCode>${loaCode}</NaicLoaCode>
+            <RequestedEffectiveDate>${appDate}</RequestedEffectiveDate>
+        </JurisdictionDetails>
+        <JitContext>
+            <IsJitSubmission>true</IsJitSubmission>
+            <ApplicationDate>${appDate}</ApplicationDate>
+            <MaxAllowableBackdateDays>${maxBackdate}</MaxAllowableBackdateDays>
+        </JitContext>
+    </AppointmentTransaction>
+</NIPRGatewayRequest>`;
+            }
+        }
+
+        function copyPayload() {
+            const text = document.getElementById('payload-preview').innerText;
+            navigator.clipboard.writeText(text);
+            alert('NIPR EAR XML Payload copied to clipboard.');
+        }
+
+        // Run default simulation on load
+        window.onload = function() {
+            runSimulation();
+        };
+    </script>
+</body>
+</html>

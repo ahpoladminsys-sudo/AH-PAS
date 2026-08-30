@@ -1,0 +1,122 @@
+{
+  "current": {
+    "sourceFile": "baseline-index-workbook.xlsx",
+    "tabs": [
+      {
+        "name": "Policyholder",
+        "rows": [
+          {
+            "ID": "PH-EXACT",
+            "Policyholder": "Exact Manufacturing",
+            "State": "TX",
+            "Region": "South"
+          },
+          {
+            "ID": "PH-LIKELY",
+            "Policyholder": "Likely Health Group",
+            "State": "FL",
+            "Region": "Southeast"
+          },
+          {
+            "ID": "PH-OLD",
+            "Policyholder": "Old Only Industries",
+            "State": "CA",
+            "Region": "West"
+          },
+          {
+            "ID": "PH-CURRENT-DUP",
+            "Policyholder": "Current Duplicate Holdings",
+            "State": "IL",
+            "Region": "Midwest"
+          },
+          {
+            "ID": "PH-CURRENT-DUP",
+            "Policyholder": "Current Duplicate Holdings",
+            "State": "IL",
+            "Region": "Midwest"
+          }
+        ]
+      },
+      {
+        "name": "Branch",
+        "rows": [
+          {
+            "ID": "BR-EXACT",
+            "Branch": "Exact Branch",
+            "State": "TX"
+          },
+          {
+            "ID": "BR-OLD",
+            "Branch": "Old Only Branch",
+            "State": "WA"
+          }
+        ]
+      }
+    ]
+  },
+  "candidate": {
+    "sourceFile": "replacement-index-workbook.xlsx",
+    "tabs": [
+      {
+        "name": "Policyholder",
+        "rows": [
+          {
+            "ID": "PH-EXACT",
+            "Policyholder": "Exact Manufacturing",
+            "Region": "South",
+            "State": "TX"
+          },
+          {
+            "ID": "PH-LIKELY",
+            "Policyholder": "Likely Health Group",
+            "State": "GA",
+            "Region": "Southeast"
+          },
+          {
+            "ID": "PH-NEW",
+            "Policyholder": "New Benefits Partners",
+            "State": "OH",
+            "Region": "Midwest"
+          },
+          {
+            "ID": "PH-INTERNAL-DUP",
+            "Policyholder": "Internal Duplicate Partners",
+            "State": "NC",
+            "Region": "Southeast"
+          },
+          {
+            "ID": "PH-INTERNAL-DUP",
+            "Policyholder": "Internal Duplicate Partners",
+            "State": "NC",
+            "Region": "Southeast"
+          }
+        ]
+      },
+      {
+        "name": "Branch",
+        "rows": [
+          {
+            "ID": "BR-EXACT",
+            "Branch": "Exact Branch",
+            "State": "TX"
+          },
+          {
+            "ID": "BR-NEW",
+            "Branch": "New Branch",
+            "State": "CO"
+          },
+          {
+            "ID": "BR-INTERNAL-DUP",
+            "Branch": "Internal Duplicate Branch",
+            "State": "OR"
+          },
+          {
+            "ID": "BR-INTERNAL-DUP",
+            "Branch": "Internal Duplicate Branch",
+            "State": "OR"
+          }
+        ]
+      }
+    ]
+  }
+}

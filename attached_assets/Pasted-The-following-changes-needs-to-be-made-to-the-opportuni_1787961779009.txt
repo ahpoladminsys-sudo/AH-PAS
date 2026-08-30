@@ -1,0 +1,33 @@
+The following changes needs to be made to the opportunity tracker.
+
+	1. Provide me the ability to add more than one document to the opportunity so A+ button so I can upload another document and also give every added file that is being uploaded the Gemini assistant checkbox. 
+	2. Following additional options to the
+	"Document tag" drop down. (Current Policy, Prior Policy, Exposure Details, Contract) Make sure the list is alphabetized within the dropdown
+	3. Renname "Document tag' to "Document Tag"
+	4. When the opportunity window is open and is the opportunity is in a prospect For negotiation stage the convert submission button should not appear it should be next and the opportunity should progress from its current state to the next state updating itself on the Kanban and the Kanban on the top of the screen as well as the pipeline kanban.
+	5. The ability to select 1 of the 3 options and if selected, the appropriate fields are made available in the opportunity. (Specific (Individual), Aggregate, Specific + Aggregate)
+		a. Based upon the selection that is made the appropriate section on the quote screen will appear whether that's the specific member severity or the aggregated group frequency fields. The same functionality would happen on the third screen of the log opportunity.
+	6. On the first screen of the logging opportunity or account whether it is a BT a PA or a stop loss policy there should be two drop down fields added one is for TPA and the other is for program name both of these fields should be populated from the appropriate tab within the attached index file. 
+	7. When an opportunity moves from onboarding because it has been converted to a submission slash quote and moves to launched the convert submission button should disappear from the bottom of the opportunity window and should be replaced with a "View Relationship". What happens then is when that button is clicked this takes the user to the relationship screen for that specific account or broker.
+	8. When a stop loss opportunity is selected a 3rd screen during the logging process should be added to capture the following information/fields. (If this information is available via one of the documents that was uploaded and extracted by the AI in the application then it should populate as much of the opportunity information data elements as it possibly can). 
+ Specific · Member Severity
+Base specific deductible
+Reporting trigger
+Member ID(s) / relationship
+Paid accumulator / YTD claims
+ICD-10 codes / diagnosis
+Prognosis / ongoing treatment
+Specialty Rx / NDC
+Laser deductible / adjustment
+(Specific fields measure individual claim severity and per-member accumulation. Diagnosis, prognosis, Rx/NDC and laser details remain visible for underwriting review.)
+Member severity
+ Aggregate · Group Frequency
+Tier enrollment · EE / ES / EC / Family
+Historical gross paid claims
+Claims under Specific
+Claims over Specific
+Expected PEPM
+Aggregate corridor
+Attachment point
+(Aggregate fields measure whole-group frequency, tier movement, pooled claims, claims under Specific and the resulting corridor / attachment point.)
+Group frequency

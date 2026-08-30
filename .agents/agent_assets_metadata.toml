@@ -1,0 +1,67 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "UH5mOZGwQdILejySUuyfF"
+uri = "file://.local/conversation-workspace/files/stop_loss_quote_journey_updated.html"
+type = "text"
+title = "Stop Loss Quote Journey — USD input formatting"
+description = "All detected monetary entry fields now display USD formatting with dollar signs, comma separators, and two decimal places while preserving numeric calculations and submission behavior."
+logical_id = "572a5531-eaa3-4d0b-828e-ce0c0a1f6f23"
+content_hash = "sha256:f042ea62d1306d5043ac9b6e7a0de5c142c9bdafeff468caa73a7f0ef59d94da"
+size = 740636
+mtime_ms = 1787935272608
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/conversation:749c4318-a302-4e0b-9ddc-3f6dae6f3cb7/572a5531-eaa3-4d0b-828e-ce0c0a1f6f23/6327284f-bfe5-4c94-b34c-72841b62bad1"
+storage_version_token = "1787935294991655"
+content_type = "text/html"
+source_uri = "file://stop_loss_quote_journey_updated.html"
+
+[[outputs]]
+id = "iRLTwWTzrtoDB32Hh2Tpv"
+uri = "file://.local/conversation-workspace/files/.agents/outputs/stop_loss_application_full_extract.xlsx"
+type = "table"
+title = "Stop Loss Application — Full Data Extract"
+description = "Import-ready workbook with 12 normalized tabs covering policies, opportunities, relationships, contacts, enrollment, claims, premium transactions, documents, audit events, sanctions, quote/extracted data, and sync metadata."
+logical_id = "7758e9d9-e97a-41b0-916b-aa543efc3276"
+content_hash = "sha256:fa45b70f039d68872b7a995a014097aa094c12e1af3922ab113a44feaf1a6307"
+size = 30141
+mtime_ms = 1787936382198
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/conversation:749c4318-a302-4e0b-9ddc-3f6dae6f3cb7/7758e9d9-e97a-41b0-916b-aa543efc3276/0909735c-6db8-40ee-9f8c-f4ceaba5625e"
+storage_version_token = "1787936423059498"
+content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+source_uri = "file://.agents/outputs/stop_loss_application_full_extract.xlsx"
+
+[[outputs]]
+id = "ULukyySzjn4qAdFKh2kIj"
+uri = "file://artifacts/stop-loss-app/index.html"
+type = "text"
+title = "Stop Loss Quote & Policy Workspace — HTML Export"
+description = "HTML-first workspace export. Serve it with the companion API server so authenticated Google Sheets snapshots/sync and Google Drive document storage remain connected through same-origin /api routes; do not open it as a file:// page."
+logical_id = "1befc515-d95d-4742-823f-2b289447b201"
+content_hash = "sha256:93e5040ab9ce1d704ee3210b3f3172323658df0567b755c8bfa22ceadd870281"
+size = 859462
+mtime_ms = 1787948000141
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:41d25ca3-a7ac-40cf-9b1c-2929fc9f5d5c/1befc515-d95d-4742-823f-2b289447b201/6a1ad2e7-590d-434e-80d6-9ad18c363103"
+storage_version_token = "1787952492783309"
+content_type = "text/html"
+
+[[outputs]]
+id = "xDETfRIJah1JxdgNXVoon"
+uri = "file://.local/outputs/Tinubu-Stop-Loss-Workbench.pptx"
+type = "slides"
+title = "Tinubu Stop Loss Workbench.pptx"
+logical_id = "72c57763-e92a-48b6-a0e2-97384c1fc983"
+
+[[outputs]]
+id = "TgiYwKGXeXx1Q-IBB-QY5"
+uri = "file://artifacts/stop-loss-app/dist/public/index.html"
+type = "text"
+title = "Download Tinubu Stop Loss Workbench HTML"
+description = "Single-file Stop Loss Quote & Policy Workspace frontend. Serve this HTML over HTTP(S) from the same origin as the companion protected /api service to enable Google Sheets, Google Drive, Gemini, and licensing connections."
+logical_id = "befb0b7a-ac23-468e-abd4-8228ea3bc80f"
+content_hash = "sha256:cef023a6c7a8615b51d3c2dd940ff51e791d81696219fbe72da130f521403b67"
+size = 1017853
+mtime_ms = 1787955989151
+storage_uri = "gcs://replit-rams-assets-kirk/rams/assets/repl:41d25ca3-a7ac-40cf-9b1c-2929fc9f5d5c/befb0b7a-ac23-468e-abd4-8228ea3bc80f/986221b9-e1d5-4e0e-99be-18b6473bf8b9"
+storage_version_token = "1787956054799104"
+content_type = "text/html"

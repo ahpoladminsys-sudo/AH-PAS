@@ -1,0 +1,20 @@
+- [Google Sheets connector scope](google-sheets-scope.md) — current connector reads Sheets but cannot write; preserve Drive fallback and truthful read-only status.
+- [Google Drive sharing quota](google-drive-sharing-quota.md) — normal uploads must not request a new sharing permission; repeated shares exhaust Google quota after file creation.
+- [RFP extraction safety](rfp-extraction-safety.md) — classify the document before extraction; reconstruct PDF rows by coordinates and require field-level evidence before applying values.
+- [Public workspace UI boundary](public-workspace-ui-boundary.md) — the HTML workspace is public-facing, while Google/Drive/licensing APIs remain server-protected.
+- [OpenAPI/Zod numeric compatibility](openapi-zod-number-compatibility.md) — integer fields generate unsupported zod.int() here; validate generated schemas with workspace typecheck.
+- [OpenAPI/Zod format compatibility](openapi-zod-format-compatibility.md) — URI and email formats can emit Zod 4 helpers; use compatible patterns and run library typecheck after codegen.
+- [OpenAPI/Zod object bounds](openapi-zod-object-bounds.md) — generated validators may omit maxProperties; enforce object key-count limits at runtime.
+- [Standalone HTML inlining](standalone-html-inlining.md) — use replacement callbacks when embedding scripts; replacement strings can corrupt dollar-sign content.
+- [API server native tests](api-server-native-tests.md) — bundle TypeScript test entries and externalize CommonJS runtime packages before using Node's test runner.
+- [Cloud status persistence boundary](cloud-status-persistence-boundary.md) — cloud save/status events must not reschedule themselves; auth denial pauses automatic protected sync.
+- [Sheets optimistic revisions](sheets-optimistic-revisions.md) — stale pushes compare a full-workbook revision inside the write queue; success returns a post-write full-workbook revision.
+- [Pending review recovery](pending-review-recovery.md) — preserve locally staged review work when an asynchronous remote snapshot is older than the browser state.
+- [Drive workbook read-after-write](drive-workbook-read-after-write.md) — consecutive workbook updates must append from the last confirmed local bytes, not an immediate Drive reread.
+- [Drive conflict test fixtures](drive-conflict-test-fixtures.md) — model metadata preflight and media reads separately so recovery tests prove refresh-before-retry behavior.
+- [Vite Node built-ins](vite-node-imports.md) — use explicit node: imports in Vite config for Node built-ins; default imports can become unsupported dynamic requires in dev preview.
+- [Cloud authorization gating](cloud-authorization-gating.md) — redacted authorization preflight must gate protected polling and require explicit recovery.
+- [Clerk browser global](clerk-browser-global.md) — CDN Clerk v5 exposes a loaded global object, not a constructible window.Clerk; initialize it through data attributes and Clerk.load().
+- [Stop Loss preview route](stop-loss-preview-route.md) — keep the app on its dedicated subpath; root ownership caused managed readiness failures despite a healthy Vite listener.
+- [Regulatory transport trust boundary](regulatory-transport-trust-boundary.md) — Live licensing mode and readiness are server-owned; client state cannot claim verified connectivity.
+- [GitHub repository verification](github-repository-verification.md) — call a source repository connected only after checking exact identity, public visibility, push access, and default branch.

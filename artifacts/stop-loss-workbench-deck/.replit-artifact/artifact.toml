@@ -1,0 +1,28 @@
+kind = "slides"
+previewPath = "/stop-loss-workbench-deck/"
+title = "Tinubu Stop Loss Workbench"
+description = "A concise presentation of the Tinubu Stop Loss Quote & Policy Workspace, its underwriting guardrails, connected data and document workflows, AI-assisted extraction, and system-of-record controls."
+version = "1.0.0"
+id = "artifacts/stop-loss-workbench-deck"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/stop-loss-workbench-deck/" ]
+localPort = 21552
+
+[services.development]
+run = "pnpm --filter @workspace/stop-loss-workbench-deck run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/stop-loss-workbench-deck", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/stop-loss-workbench-deck/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21552"
+BASE_PATH = "/stop-loss-workbench-deck/"

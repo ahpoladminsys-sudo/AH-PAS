@@ -1,0 +1,42 @@
+[
+  {
+    "id": "4a3e15e0-7c2a-4c58-9c9c-0f7e1f315b10",
+    "position": 1,
+    "filepath": "src/pages/slides/WorkbenchCover.tsx",
+    "title": "Tinubu Stop Loss Workbench",
+    "description": "Connected quote-to-policy operations for self-funded business.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "9f2e7d8a-1d2c-4af5-9b9d-7e5f0a5c2b14",
+    "position": 2,
+    "filepath": "src/pages/slides/Lifecycle.tsx",
+    "title": "One workspace across the lifecycle",
+    "description": "The operating model across CRM, intake, rating, issuance, and policy operations.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "2b7c4d91-5e6f-4a3b-8d1c-6f2e9a7b0c35",
+    "position": 3,
+    "filepath": "src/pages/slides/Guardrails.tsx",
+    "title": "Underwriting decisions with guardrails",
+    "description": "Eligibility logic for licensed parties, programs, and binding.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "6c1a9e4b-8f2d-4c7e-a5b3-0d9f6e1c2a48",
+    "position": 4,
+    "filepath": "src/pages/slides/ConnectedData.tsx",
+    "title": "Connected documents, data, and AI",
+    "description": "Evidence flow across Sheets, Drive, cache, Gemini, and source retention.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "8d5f2a7c-3b1e-4f6a-9c0d-2e7b5a1f4d63",
+    "position": 5,
+    "filepath": "src/pages/slides/ControlledRecord.tsx",
+    "title": "A controlled system of record",
+    "description": "Auditability, server controls, authority checks, and the path to publication.",
+    "speakerNotes": ""
+  }
+]

@@ -1,0 +1,73 @@
+Rebuild HTML And Verify Integrations
+What & Why
+After the currently active Drive, Sheets, index-review, replacement-review, prompt-history, rebuild-concurrency, and authorization-recovery work is merged, perform the final integration pass for the Stop Loss workspace. Rebuild the downloadable one-file HTML from the latest source and validate the complete hosted and portable paths so application transactions remain connected to the protected API, Google services, PostgreSQL-backed state, and any configured Gemini/licensing integrations without making unsupported claims about connector capabilities.
+Done looks like
+• The registered Stop Loss export is rebuilt from the final merged sources and the library reports it as current only after the one-file integrity and freshness checks pass.
+• The downloaded HTML contains the required local workspace code, styles, and seed data inline, has no required local companion-file references, preserves the portable API-origin/session handoff, and retains interactivity with protected API routes.
+• A deterministic, idempotent QA transaction scenario exercises BTA, PA, and Stop Loss opportunities; conversion and rating; policy issuance; enrollment/census history and replacement handling; claims/FNOL; premium booking and ledger records; documents; sanctions; relationships; licensing; prompt revisions; index reviews; System Log; and generated-document actions.
+• Hosted and downloaded-file runs verify authenticated reads and writes/fallbacks across the API. Google Sheets is reported as writable only after a real write succeeds; with the current read-only connector, browser cache and managed Drive backup remain available and the UI says that Sheets was not updated.
+• PostgreSQL-backed configuration/licensing state, Google Drive workspace state and documents, and any successful Google Sheets changes survive a fresh read/reload with IDs, revisions, modified times, and replacement metadata intact.
+• Unauthorized, expired-session, provider-denied, read-only, conflict, transient-service, and offline cases remain recoverable and truthful; no credential, token, private payload, or unintended Drive sharing/cleanup action is introduced.
+• Existing regression suites plus new final integration checks pass after any defects found during the transaction run are repaired, and the final export/download is revalidated after the repairs.
+Out of scope
+• Adding a new Google OAuth implementation, changing connector scopes, adding providers, or claiming Google Sheets write capability when the connected account remains read-only.
+• Replacing Clerk or the portable-session handoff, exposing credentials in HTML/localStorage/System Log, or making protected Google/Gemini/licensing routes public.
+• Destructive production Drive cleanup, ownership transfer, sharing, or migration without an explicitly isolated QA fixture and reviewed confirmation.
+• A continuously self-updating static file when it is opened without a server; freshness is maintained by the controlled rebuild-before-distribution flow and by the hosted API for live data.
+• New underwriting, CRM, policy, or visual redesign work unrelated to integration defects discovered by this verification.
+Steps
+1. Establish the final baseline — Start from the latest merged sources and confirm the completed task contracts, API specification, generated types, database schema, and existing one-file build assumptions agree. Capture a clean baseline for the hosted app, portable HTML, API server, and current cloud status before creating QA records.
+2. Run the idempotent QA transaction journey — Reuse the existing QA seed where possible and add only deterministic, clearly marked records needed to cover every product and workflow. Execute opportunity creation and Stop Loss conversion, rating selection, policy binding, enrollment uploads across multiple report months with a same-month replacement, claims/FNOL, premium booking, document upload/generation, sanctions and relationship links, licensing validation/editing, prompt revision comparison/restoration, and index replacement review; verify each resulting view and System Log decision.
+3. Verify persistence round trips — Map the resulting records into the normalized workbook tabs, save/recover managed workspace state, and re-read each durable store from a fresh browser/API session. Confirm replacement metadata selects only the newest operational census while retaining prior history, stale revisions and Drive modified-time conflicts do not overwrite newer data, and browser fallback remains intact when a cloud write is unavailable.
+4. Exercise all integration boundaries — Test the hosted same-origin flow and the downloaded-file flow with a configured API origin and short-lived portable session. Cover authenticated Drive listing/upload/read/preview/download, System Folder routing and conservative review guards, Sheets status/snapshot/configuration and verified sync or read-only fallback, licensing persistence/validation, Gemini success/fallback behavior when configured, session expiry/recovery, provider authorization failure, and offline/server failure messaging without automatically retrying protected or destructive mutations.
+5. Rebuild and validate the distributable HTML — Use the approved controlled rebuild path and latest source inputs, then inspect the generated artifact for current freshness, complete HTML structure, valid inline scripts, absent required local asset references, correct API-origin configuration, and preserved initialization order. Verify the catalog metadata, attachment headers, download contents, and served export all refer to the same build, including the failure/atomic-handoff behavior when a rebuild or source check fails.
+6. Automate the final regression matrix — Extend the existing app-level and API-level fixtures with assertions for the QA transaction journey, persistence round trips, hosted/portable request routing, auth and provider failure states, Sheets read-only truthfulness, Drive sharing boundaries, rebuild freshness, and concurrent export requests. Run the existing index-review, prompt-history, Drive, library, typecheck, code-generation, and production-build checks directly, recording actionable evidence rather than relying on a visual-only pass.
+7. Repair, rerun, and publish the final state — Fix defects found in the transaction or integration matrix within the owning source area, rerun affected checks and the full matrix, then perform one final controlled rebuild. Leave the library pointing to the verified current export and document any unavoidable external connector limitation without presenting a partial or stale result as complete.
+Relevant files
+	• artifacts/stop-loss-app/index.html:1-73
+	• artifacts/stop-loss-app/index.html:2991-3003
+	• artifacts/stop-loss-app/index.html:3052-3074
+	• artifacts/stop-loss-app/index.html:5100-5233
+	• artifacts/stop-loss-app/vite.config.ts
+	• artifacts/stop-loss-app/.replit-artifact/artifact.toml
+	• artifacts/stop-loss-app/public/cloud-sync.js:1-178
+	• artifacts/stop-loss-app/public/cloud-sync.js:181-267
+	• artifacts/stop-loss-app/public/cloud-sync.js:826-1061
+	• artifacts/stop-loss-app/public/index-reference-runtime.js
+	• artifacts/stop-loss-app/public/ai-upload-prompts.js
+	• artifacts/stop-loss-app/public/licensing-suite.js
+	• artifacts/stop-loss-app/scripts/test-index-review.mjs
+	• artifacts/stop-loss-app/scripts/test-ai-upload-prompts.mjs
+	• artifacts/api-server/src/app.ts
+	• artifacts/api-server/src/routes/index.ts
+	• artifacts/api-server/src/routes/library.ts:168-453
+	• artifacts/api-server/src/routes/sheets.ts
+	• artifacts/api-server/src/routes/drive.ts
+	• artifacts/api-server/src/routes/licensing.ts
+	• artifacts/api-server/src/routes/gemini.ts
+	• artifacts/api-server/src/lib/google-drive.ts
+	• artifacts/api-server/src/lib/google-sheets.ts
+	• artifacts/api-server/src/lib/portable-auth.ts
+	• artifacts/api-server/src/middlewares/requireAuth.ts
+	• artifacts/api-server/test/build-library-cloud-safety.mjs
+	• artifacts/api-server/test/build-drive-migrations.mjs
+	• artifacts/api-server/test/build-index-drive-authenticated.mjs
+	• lib/api-spec/openapi.yaml
+	• lib/db/src/schema/index.ts
+Dependencies
+Preserve every census month without showing stale replacements
+Open task
+Let operators compare prompt revisions before restoring
+Open task
+Make stale index conflicts easier to recover from
+Open task
+Show pending replacement reviews before operators leave System Log
+Open task
+Repair Google cloud authorization recovery
+Open task
+Confirm authenticated rebuilds stay serialized under concurrent downloads
+Open task
+
+Keep Drive organized without deleting the wrong files
+
+Main

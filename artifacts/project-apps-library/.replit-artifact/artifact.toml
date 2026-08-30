@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/project-apps-library/"
+title = "Apps and outputs from your projects"
+description = "A maintained, searchable library of project apps, presentations, and generated documents with protected Google Sheets and Google Drive persistence."
+version = "1.0.0"
+id = "artifacts/project-apps-library"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/project-apps-library/" ]
+localPort = 25246
+
+[services.development]
+run = "pnpm --filter @workspace/project-apps-library run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/project-apps-library", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/project-apps-library/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25246"
+BASE_PATH = "/project-apps-library/"
